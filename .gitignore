@@ -1,0 +1,22 @@
+# Images
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.tiff
+images/
+known_faces/
+results/
+
+# Database
+*.npz
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+
+# Python cache
+__pycache__/
+*.pyc

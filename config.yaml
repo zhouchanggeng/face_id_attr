@@ -1,0 +1,45 @@
+# 人脸识别流水线配置文件
+# 每个模块通过 class 指定 "模块路径.类名"，params 传入构造函数参数
+# 切换算法只需修改 class 和 params，无需改代码
+
+detector:
+  class: "module.face_detection.deepface_detector.DeepFaceDetector"
+  params:
+    backend: "centerface"
+    align: false
+    conf_threshold: 0.5
+
+# 设为 null 可跳过人脸校正
+aligner:
+  class: "module.face_alignment.simple_aligner.SimpleAligner"
+  params:
+    output_size: [112, 112]
+
+# 人脸识别 - 使用 DeepFace 深度学习模型提取特征
+# 可选 model_name: VGG-Face, Facenet, Facenet512, OpenFace, ArcFace, Dlib, SFace, GhostFaceNet, Buffalo_L
+recognizer:
+  class: "module.face_recognition.deepface_recognizer.DeepFaceRecognizer"
+  params:
+    model_name: "Facenet512"
+    detector_backend: "skip"
+
+# 人脸向量数据库（可替换为 FAISS/Milvus 等实现）
+database:
+  class: "module.face_database.numpy_db.NumpyFaceDatabase"
+  params: {}
+  db_path: "face_db.npz"
+
+# 人脸属性分析（年龄、性别、表情、种族）
+# 设为 null 可禁用
+analyzer:
+  class: "module.face_analysis.deepface_analyzer.DeepFaceAnalyzer"
+  params:
+    actions: ["age", "gender", "emotion", "race"]
+    detector_backend: "skip"
+
+# 1:N 识别阈值
+identify_threshold: 0.6
+
+# 文件夹路径默认值
+known_faces_dir: "known_faces"
+images_dir: "images"
