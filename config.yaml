@@ -35,7 +35,8 @@ recognizer:
 # 人脸向量数据库（可替换为 FAISS/Milvus 等实现）
 database:
   class: "module.face_database.numpy_db.NumpyFaceDatabase"
-  params: {}
+  params:
+    dup_threshold: 0.9
   db_path: "face_db.npz"
 
 # 人脸属性分析（已禁用，移除 deepface 依赖后不可用）

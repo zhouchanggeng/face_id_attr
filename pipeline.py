@@ -107,12 +107,13 @@ class FaceRecogPipeline:
             raise RuntimeError("未配置人脸数据库 (database)")
 
     def register(self, identity: str, image: np.ndarray) -> int:
-        """注册图片中所有人脸到数据库，返回注册的人脸数。"""
+        """注册图片中所有人脸到数据库，返回实际新注册的人脸数（已存在的会自动跳过）。"""
         self._require_db()
         faces = self.extract(image)
+        before = len(self.database.features)
         for f in faces:
             self.database.register(identity, f["feature"])
-        return len(faces)
+        return len(self.database.features) - before
 
     def identify(self, image: np.ndarray, threshold: float = 0.5, top_k: int = 1) -> List[dict]:
         """
