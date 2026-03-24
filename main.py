@@ -257,6 +257,82 @@ def cmd_remove(args, pipe, cfg):
     _save_db(pipe, cfg)
 
 
+def cmd_visualize(args, pipe, cfg):
+    """可视化已注册人脸特征的 2D 分布（t-SNE / PCA）。"""
+    pipe._require_db()
+    if not pipe.database.features:
+        print("数据库为空，请先注册人脸")
+        return
+
+    import numpy as np
+    features = np.array(pipe.database.features, dtype=np.float32)
+    identities = pipe.database.identities
+    unique_ids = sorted(set(identities))
+
+    if len(features) < 2:
+        print("至少需要 2 条特征才能可视化")
+        return
+
+    # 降维
+    method = args.method.lower()
+    if method == "tsne":
+        from sklearn.manifold import TSNE
+        perp = min(args.perplexity, len(features) - 1)
+        reducer = TSNE(n_components=2, perplexity=perp, random_state=42, init="pca")
+        coords = reducer.fit_transform(features)
+        title = f"Face Feature t-SNE (perplexity={perp})"
+    elif method == "umap":
+        import umap
+        n_neighbors = min(15, len(features) - 1)
+        reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors, random_state=42)
+        coords = reducer.fit_transform(features)
+        title = "Face Feature UMAP"
+    else:
+        from sklearn.decomposition import PCA
+        reducer = PCA(n_components=2)
+        coords = reducer.fit_transform(features)
+        ratio = reducer.explained_variance_ratio_
+        title = f"Face Feature PCA (var: {ratio[0]:.1%} + {ratio[1]:.1%})"
+
+    # 绘图
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    cmap = plt.colormaps.get_cmap("tab10").resampled(max(len(unique_ids), 1))
+
+    for idx, uid in enumerate(unique_ids):
+        mask = [i for i, name in enumerate(identities) if name == uid]
+        ax.scatter(coords[mask, 0], coords[mask, 1],
+                   c=[cmap(idx)], label=uid, s=60, alpha=0.8, edgecolors="white", linewidths=0.5)
+
+    ax.set_title(title, fontsize=14)
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    out_path = args.output or "feature_visualization.png"
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"可视化结果已保存: {out_path}")
+
+    # 打印类间/类内相似度统计
+    print(f"\n特征统计 ({len(features)} 条特征, {len(unique_ids)} 个身份):")
+    for uid in unique_ids:
+        mask = [i for i, name in enumerate(identities) if name == uid]
+        if len(mask) < 2:
+            continue
+        vecs = features[mask].astype(np.float64)
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        vecs_normed = vecs / norms
+        sim_matrix = vecs_normed @ vecs_normed.T
+        # 取上三角（排除对角线）
+        triu_idx = np.triu_indices(len(mask), k=1)
+        intra_sims = sim_matrix[triu_idx]
+        print(f"  {uid}: 类内相似度 mean={intra_sims.mean():.4f}, min={intra_sims.min():.4f}, max={intra_sims.max():.4f}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="人脸识别流水线")
     parser.add_argument("--config", default="config.yaml", help="配置文件路径")
@@ -316,10 +392,15 @@ def main():
     p_adir.add_argument("--save", action="store_true", help="保存结果图片")
     p_adir.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
 
-    # list / remove
+    # list / remove / visualize
     sub.add_parser("list", help="列出已注册身份")
     p_rm = sub.add_parser("remove", help="删除已注册身份")
     p_rm.add_argument("--name", required=True, help="身份名称")
+
+    p_vis = sub.add_parser("visualize", help="可视化已注册人脸特征分布 (t-SNE/PCA/UMAP)")
+    p_vis.add_argument("--method", default="tsne", choices=["tsne", "pca", "umap"], help="降维方法 (默认: tsne)")
+    p_vis.add_argument("--perplexity", type=float, default=5, help="t-SNE perplexity (默认: 5)")
+    p_vis.add_argument("--output", default=None, help="输出图片路径 (默认: feature_visualization.png)")
 
     args = parser.parse_args()
     if not args.command:
@@ -340,6 +421,7 @@ def main():
         "analyze-dir": cmd_analyze_dir,
         "list": cmd_list,
         "remove": cmd_remove,
+        "visualize": cmd_visualize,
     }
     commands[args.command](args, pipe, cfg)
 
