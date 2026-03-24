@@ -186,6 +186,74 @@ def cmd_detect_dir(args, pipe, cfg):
             print(f"  -> 保存: {out}")
 
 
+def _draw_align_results(image, results, output_path, align_dir=None):
+    """在原图上画 5 关键点 + bbox，同时保存每张 align 后的人脸。"""
+    vis = image.copy()
+    POINT_NAMES = ["L-Eye", "R-Eye", "Nose", "L-Mouth", "R-Mouth"]
+    POINT_COLORS = [(0, 255, 0), (0, 255, 255), (255, 0, 0), (255, 0, 255), (0, 165, 255)]
+
+    base_name = os.path.splitext(os.path.basename(output_path))[0]
+
+    for idx, r in enumerate(results):
+        x1, y1, x2, y2 = r["bbox"]
+        cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+        five_pts = r.get("five_points")
+        if five_pts is not None:
+            for j, (px, py) in enumerate(five_pts):
+                color = POINT_COLORS[j % len(POINT_COLORS)]
+                cv2.circle(vis, (int(px), int(py)), 4, color, -1)
+                cv2.putText(vis, POINT_NAMES[j], (int(px) + 5, int(py) - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+
+        # 保存 align 后的人脸
+        aligned = r.get("aligned_face")
+        if aligned is not None and align_dir:
+            os.makedirs(align_dir, exist_ok=True)
+            align_path = os.path.join(align_dir, f"{base_name}_face{idx}.jpg")
+            cv2.imwrite(align_path, aligned)
+
+    cv2.imwrite(output_path, vis)
+    return output_path
+
+
+def cmd_align(args, pipe, cfg):
+    img = cv2.imread(args.img)
+    if img is None:
+        raise FileNotFoundError(f"无法读取图片: {args.img}")
+    results = pipe.align_faces(img)
+    print(f"检测到 {len(results)} 张人脸:")
+    for i, r in enumerate(results):
+        pts_info = "有" if r["five_points"] is not None else "无"
+        print(f"  [{i}] bbox={r['bbox']}, conf={r['confidence']:.3f}, 关键点={pts_info}")
+    if args.save and results:
+        out = _output_path(args.img, args.output_dir)
+        align_dir = os.path.join(args.output_dir or "results", "aligned")
+        _draw_align_results(img, results, out, align_dir)
+        print(f"关键点结果已保存: {out}")
+        print(f"对齐人脸已保存到: {align_dir}/")
+
+
+def cmd_align_dir(args, pipe, cfg):
+    images_dir = args.dir or cfg.get("images_dir", "images")
+    if not os.path.isdir(images_dir):
+        raise FileNotFoundError(f"目录不存在: {images_dir}")
+    out_dir = args.output_dir or "results"
+    align_dir = os.path.join(out_dir, "aligned")
+    for img_path in _iter_images(images_dir):
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"[跳过] 无法读取: {img_path}")
+            continue
+        results = pipe.align_faces(img)
+        filename = os.path.basename(img_path)
+        print(f"{filename}: 检测到 {len(results)} 张人脸")
+        if args.save:
+            out = _output_path(img_path, out_dir)
+            _draw_align_results(img, results, out, align_dir)
+            print(f"  -> 保存: {out}")
+
+
 def cmd_analyze(args, pipe, cfg):
     img = cv2.imread(args.img)
     if img is None:
@@ -380,6 +448,18 @@ def main():
     p_ddir.add_argument("--save", action="store_true", help="保存结果图片")
     p_ddir.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
 
+    # align
+    p_align = sub.add_parser("align", help="人脸关键点检测 + 对齐 (画出5关键点并保存align结果)")
+    p_align.add_argument("--img", required=True, help="图片路径")
+    p_align.add_argument("--save", action="store_true", help="保存结果图片")
+    p_align.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
+
+    # align-dir
+    p_adir2 = sub.add_parser("align-dir", help="对文件夹下所有图片进行关键点检测 + 对齐")
+    p_adir2.add_argument("--dir", default=None, help="图片文件夹 (默认: images)")
+    p_adir2.add_argument("--save", action="store_true", help="保存结果图片")
+    p_adir2.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
+
     # analyze
     p_ana = sub.add_parser("analyze", help="人脸属性分析 (年龄/性别/表情/种族)")
     p_ana.add_argument("--img", required=True, help="图片路径")
@@ -417,6 +497,8 @@ def main():
         "compare": cmd_compare,
         "detect": cmd_detect,
         "detect-dir": cmd_detect_dir,
+        "align": cmd_align,
+        "align-dir": cmd_align_dir,
         "analyze": cmd_analyze,
         "analyze-dir": cmd_analyze_dir,
         "list": cmd_list,

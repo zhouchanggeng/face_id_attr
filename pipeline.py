@@ -90,6 +90,46 @@ class FaceRecogPipeline:
                     face["landmarks"] = (face["landmarks"] * inv).astype(np.float32)
             results.append({**face, "feature": feat})
         return results
+
+    def align_faces(self, image: np.ndarray) -> List[dict]:
+        """检测人脸并返回每张脸的 5 关键点和 align 后的图像。
+
+        Returns:
+            [{bbox, confidence, five_points, aligned_face}, ...]
+            five_points: shape (5, 2)，原图坐标系下的 5 个关键点
+            aligned_face: 对齐后的 112x112 BGR 图像
+        """
+        from module.face_alignment.pfld_aligner import PFLDAligner
+
+        resized, scale = self._limit_size(image, self.max_image_size)
+        faces = self.detector.detect(resized)
+        results = []
+        for face in faces:
+            face_img = self._get_face_image(resized, face)
+
+            # 提取 5 关键点（缩放图坐标系）
+            five_pts = None
+            if isinstance(self.aligner, PFLDAligner):
+                pts_98 = self.aligner.predict_98pts(resized, face)
+                five_pts = pts_98[PFLDAligner.FIVE_POINT_IDX].copy()
+            elif face.get("landmarks") is not None and len(face["landmarks"]) >= 5:
+                five_pts = face["landmarks"][:5].copy()
+
+            # 映射回原图坐标
+            if scale < 1.0:
+                inv = 1.0 / scale
+                x1, y1, x2, y2 = face["bbox"]
+                face["bbox"] = (int(x1 * inv), int(y1 * inv),
+                                int(x2 * inv), int(y2 * inv))
+                if five_pts is not None:
+                    five_pts = (five_pts * inv).astype(np.float32)
+
+            results.append({
+                "bbox": face["bbox"],
+                "confidence": face["confidence"],
+                "five_points": five_pts,
+                "aligned_face": face_img,
+            })
         return results
 
     def compare_images(self, image1: np.ndarray, image2: np.ndarray) -> float:

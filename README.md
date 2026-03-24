@@ -10,7 +10,9 @@
 - **PFLD 关键点校正**：集成 PFLD_GhostOne 98 点关键点模型，基于 5 关键点仿射变换对齐人脸
 - **SFace 特征提取**：基于 OpenCV FaceRecognizerSF，提取 128 维特征向量，纯 CPU 可运行
 - **向量数据库**：内置 NumPy 余弦相似度检索，支持注册、搜索、删除，可扩展为 FAISS/Milvus
-- **完整 CLI**：注册、识别、比对、检测、属性分析，支持单张和批量操作
+- **完整 CLI**：注册、识别、比对、检测、关键点对齐、特征可视化，支持单张和批量操作
+- **注册去重**：基于特征余弦相似度自动跳过已注册的重复人脸，阈值可配置
+- **特征可视化**：支持 t-SNE / PCA / UMAP 降维可视化已注册人脸特征分布，输出类内相似度统计
 
 ## 项目结构
 
@@ -63,6 +65,8 @@ pip install -r requirements.txt
 - `pyyaml >= 6.0`
 - `ultralytics >= 8.3`（YOLO 检测器）
 - `onnxruntime >= 1.14`（PFLD 关键点校正）
+- `scikit-learn`（特征可视化 t-SNE/PCA，可选）
+- `matplotlib`（特征可视化绘图，可选）
 
 ## 模型准备
 
@@ -134,7 +138,40 @@ python main.py detect --img face.jpg --save
 python main.py detect-dir --dir images/ --save --output-dir results
 ```
 
-### 5. 人脸属性分析
+### 5. 人脸关键点对齐
+
+在原图上绘制 5 个关键点（左眼、右眼、鼻尖、左嘴角、右嘴角），同时保存 align 后的 112x112 人脸图像。
+
+```bash
+# 单张图片
+python main.py align --img face.jpg --save
+
+# 批量处理
+python main.py align-dir --dir images/ --save --output-dir results
+```
+
+输出：
+- `results/xxx_result.jpg` — 原图标注 bbox + 5 彩色关键点
+- `results/aligned/xxx_result_face0.jpg` — 对齐后的 112x112 人脸
+
+### 6. 特征可视化
+
+将已注册的人脸特征降维到 2D 可视化，分析身份聚类质量和类内相似度。
+
+```bash
+# t-SNE 可视化（默认）
+python main.py visualize
+
+# PCA 可视化
+python main.py visualize --method pca --output feature_pca.png
+
+# UMAP 可视化（需 pip install umap-learn）
+python main.py visualize --method umap
+```
+
+输出散点图（不同身份不同颜色）和类内相似度统计（mean/min/max）。
+
+### 7. 人脸属性分析
 
 ```bash
 python main.py analyze --img face.jpg --save
@@ -143,7 +180,7 @@ python main.py analyze-dir --save --output-dir results
 
 > 注：属性分析需要实现 `FaceAnalyzer` 子类并在 `config.yaml` 中配置 `analyzer`。
 
-### 6. 数据库管理
+### 8. 数据库管理
 
 ```bash
 # 列出已注册身份
@@ -176,7 +213,8 @@ recognizer:
 
 database:
   class: "module.face_database.numpy_db.NumpyFaceDatabase"
-  params: {}
+  params:
+    dup_threshold: 0.9   # 注册去重阈值，同身份下相似度超过此值视为重复
   db_path: "face_db.npz"
 
 analyzer: null
