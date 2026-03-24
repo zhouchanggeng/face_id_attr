@@ -1,4 +1,4 @@
-# Images
+# Images & Results
 *.jpg
 *.jpeg
 *.png
@@ -6,8 +6,18 @@
 *.gif
 *.tiff
 images/
+images_*/
 known_faces/
 results/
+results_*/
+
+# Models (large binary files)
+models/
+*.onnx
+*.pt
+*.pth
+*.h5
+*.caffemodel
 
 # Database
 *.npz
@@ -16,7 +26,13 @@ results/
 
 # IDE
 .vscode/
+*.code-workspace
 
 # Python cache
 __pycache__/
 *.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db

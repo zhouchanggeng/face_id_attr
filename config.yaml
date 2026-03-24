@@ -3,25 +3,34 @@
 # 切换算法只需修改 class 和 params，无需改代码
 
 detector:
-  class: "module.face_detection.deepface_detector.DeepFaceDetector"
+  class: "module.face_detection.yolo_detector.YOLOFaceDetector"
   params:
-    backend: "centerface"
-    align: false
+    model_path: "models/yolo26m_wider_face/weights/best.pt"
     conf_threshold: 0.5
+    iou_threshold: 0.45
+    imgsz: 640
+    device: "cuda:0"
 
-# 设为 null 可跳过人脸校正
+# 可选检测器: YuNet（轻量级，带 5 点 landmarks，配合 SFace alignCrop 效果好）
+# detector:
+#   class: "module.face_detection.yunet_detector.YuNetDetector"
+#   params:
+#     model_path: "models/yunet/face_detection_yunet_2023mar.onnx"
+#     conf_threshold: 0.5
+
+# 人脸校正 - 使用 PFLD_GhostOne 98 点关键点对齐
 aligner:
-  class: "module.face_alignment.simple_aligner.SimpleAligner"
+  class: "module.face_alignment.pfld_aligner.PFLDAligner"
   params:
+    model_path: "models/PFLD_GhostOne_112_1_opt_sim.onnx"
+    input_size: 112
     output_size: [112, 112]
 
-# 人脸识别 - 使用 DeepFace 深度学习模型提取特征
-# 可选 model_name: VGG-Face, Facenet, Facenet512, OpenFace, ArcFace, Dlib, SFace, GhostFaceNet, Buffalo_L
+# 人脸识别 - 使用 SFace (OpenCV) 提取 128 维特征
 recognizer:
-  class: "module.face_recognition.deepface_recognizer.DeepFaceRecognizer"
+  class: "module.face_recognition.sface_recognizer.SFaceRecognizer"
   params:
-    model_name: "Facenet512"
-    detector_backend: "skip"
+    model_path: "models/sface/face_recognition_sface_2021dec.onnx"
 
 # 人脸向量数据库（可替换为 FAISS/Milvus 等实现）
 database:
@@ -29,13 +38,15 @@ database:
   params: {}
   db_path: "face_db.npz"
 
-# 人脸属性分析（年龄、性别、表情、种族）
-# 设为 null 可禁用
-analyzer:
-  class: "module.face_analysis.deepface_analyzer.DeepFaceAnalyzer"
-  params:
-    actions: ["age", "gender", "emotion", "race"]
-    detector_backend: "skip"
+# 人脸属性分析（已禁用，移除 deepface 依赖后不可用）
+# 如需属性分析，可实现基于其他库的 FaceAnalyzer
+analyzer: null
+
+# 是否使用 SFace alignCrop 进行关键点对齐（需要 YuNet 检测器 + SFace 识别器）
+use_align_crop: true
+
+# 超大图缩放上限（长边像素），超过此值会先缩放再处理，避免裁剪缩放比过大导致特征质量下降
+max_image_size: 1920
 
 # 1:N 识别阈值
 identify_threshold: 0.6

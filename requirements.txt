@@ -1,4 +1,5 @@
 opencv-python>=4.5
 numpy>=1.20
 pyyaml>=6.0
-deepface>=0.0.89
+ultralytics>=8.3
+onnxruntime>=1.14

@@ -51,7 +51,7 @@ def _save_db(pipe, cfg):
         pipe.database.save(db_path)
         print(f"数据库已保存: {db_path}")
 
-
+ 
 def _output_path(img_path, output_dir=None):
     """生成结果图片保存路径。"""
     out_dir = output_dir or "results"
@@ -168,6 +168,24 @@ def cmd_detect(args, pipe, cfg):
         print(f"结果已保存: {out}")
 
 
+def cmd_detect_dir(args, pipe, cfg):
+    images_dir = args.dir or cfg.get("images_dir", "images")
+    if not os.path.isdir(images_dir):
+        raise FileNotFoundError(f"目录不存在: {images_dir}")
+    for img_path in _iter_images(images_dir):
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"[跳过] 无法读取: {img_path}")
+            continue
+        faces = pipe.detect(img)
+        filename = os.path.basename(img_path)
+        print(f"{filename}: 检测到 {len(faces)} 张人脸")
+        if args.save:
+            out = _output_path(img_path, args.output_dir)
+            pipe.draw_results(img, faces, out)
+            print(f"  -> 保存: {out}")
+
+
 def cmd_analyze(args, pipe, cfg):
     img = cv2.imread(args.img)
     if img is None:
@@ -280,6 +298,12 @@ def main():
     p_det.add_argument("--save", action="store_true", help="保存结果图片")
     p_det.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
 
+    # detect-dir
+    p_ddir = sub.add_parser("detect-dir", help="对文件夹下所有图片进行人脸检测")
+    p_ddir.add_argument("--dir", default=None, help="图片文件夹 (默认: images)")
+    p_ddir.add_argument("--save", action="store_true", help="保存结果图片")
+    p_ddir.add_argument("--output-dir", default=None, help="结果图片保存目录 (默认: results)")
+
     # analyze
     p_ana = sub.add_parser("analyze", help="人脸属性分析 (年龄/性别/表情/种族)")
     p_ana.add_argument("--img", required=True, help="图片路径")
@@ -311,6 +335,7 @@ def main():
         "identify-dir": cmd_identify_dir,
         "compare": cmd_compare,
         "detect": cmd_detect,
+        "detect-dir": cmd_detect_dir,
         "analyze": cmd_analyze,
         "analyze-dir": cmd_analyze_dir,
         "list": cmd_list,

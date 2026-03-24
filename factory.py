@@ -38,5 +38,9 @@ def build_pipeline(config_path: str) -> tuple:
     if cfg.get("analyzer"):
         analyzer = _create_instance(cfg["analyzer"])
 
-    pipe = FaceRecogPipeline(detector, recognizer, aligner, database, analyzer)
+    pipe = FaceRecogPipeline(
+        detector, recognizer, aligner, database, analyzer,
+        use_align_crop=cfg.get("use_align_crop", True),
+        max_image_size=cfg.get("max_image_size", 1920),
+    )
     return pipe, cfg

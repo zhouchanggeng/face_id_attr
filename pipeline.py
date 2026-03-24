@@ -22,12 +22,27 @@ class FaceRecogPipeline:
         aligner: Optional[FaceAligner] = None,
         database: Optional[FaceDatabase] = None,
         analyzer: Optional[FaceAnalyzer] = None,
+        use_align_crop: bool = True,
+        max_image_size: int = 1920,
     ):
         self.detector = detector
         self.aligner = aligner
         self.recognizer = recognizer
         self.database = database
         self.analyzer = analyzer
+        self.use_align_crop = use_align_crop
+        self.max_image_size = max_image_size
+
+    @staticmethod
+    def _limit_size(image: np.ndarray, max_size: int):
+        """将超大图缩放到 max_size 以内，返回 (缩放后图像, 缩放比例)。"""
+        h, w = image.shape[:2]
+        if max(h, w) <= max_size:
+            return image, 1.0
+        scale = max_size / max(h, w)
+        resized = cv2.resize(image, (int(w * scale), int(h * scale)),
+                             interpolation=cv2.INTER_AREA)
+        return resized, scale
 
     def _crop(self, image: np.ndarray, bbox: tuple, size: tuple = (112, 112)) -> np.ndarray:
         x1, y1, x2, y2 = bbox
@@ -35,21 +50,46 @@ class FaceRecogPipeline:
         return cv2.resize(crop, size)
 
     def _get_face_image(self, image: np.ndarray, face: dict) -> np.ndarray:
+        # 使用 SFace alignCrop（当启用且检测器提供 YuNet 原始数据时）
+        yunet_face = face.get("_yunet_face")
+        if self.use_align_crop and yunet_face is not None and hasattr(self.recognizer, "align_crop"):
+            return self.recognizer.align_crop(image, yunet_face)
         if self.aligner:
             return self.aligner.align(image, face)
         return self._crop(image, face["bbox"])
 
     def detect(self, image: np.ndarray) -> List[dict]:
-        return self.detector.detect(image)
+        resized, scale = self._limit_size(image, self.max_image_size)
+        faces = self.detector.detect(resized)
+        if scale < 1.0:
+            inv = 1.0 / scale
+            for f in faces:
+                x1, y1, x2, y2 = f["bbox"]
+                f["bbox"] = (int(x1 * inv), int(y1 * inv),
+                             int(x2 * inv), int(y2 * inv))
+                if f.get("landmarks") is not None:
+                    f["landmarks"] = (f["landmarks"] * inv).astype(np.float32)
+        return faces
 
     def extract(self, image: np.ndarray) -> List[dict]:
-        """检测 + (可选校正) + 特征提取。"""
-        faces = self.detector.detect(image)
+        """检测 + (可选校正) + 特征提取。在缩放后的图上裁剪人脸以保证质量。"""
+        resized, scale = self._limit_size(image, self.max_image_size)
+        faces = self.detector.detect(resized)
         results = []
         for face in faces:
-            face_img = self._get_face_image(image, face)
+            # 在缩放后的图上裁剪/对齐，保证裁剪区域与 112x112 的缩放比合理
+            face_img = self._get_face_image(resized, face)
             feat = self.recognizer.extract(face_img)
+            # bbox 映射回原图坐标（用于绘图）
+            if scale < 1.0:
+                inv = 1.0 / scale
+                x1, y1, x2, y2 = face["bbox"]
+                face["bbox"] = (int(x1 * inv), int(y1 * inv),
+                                int(x2 * inv), int(y2 * inv))
+                if face.get("landmarks") is not None:
+                    face["landmarks"] = (face["landmarks"] * inv).astype(np.float32)
             results.append({**face, "feature": feat})
+        return results
         return results
 
     def compare_images(self, image1: np.ndarray, image2: np.ndarray) -> float:
@@ -113,10 +153,17 @@ class FaceRecogPipeline:
         """检测人脸并分析属性（年龄、性别、表情、种族）。"""
         if self.analyzer is None:
             raise RuntimeError("未配置人脸分析器 (analyzer)")
-        faces = self.detector.detect(image)
+        resized, scale = self._limit_size(image, self.max_image_size)
+        faces = self.detector.detect(resized)
         if not faces:
             return []
-        attrs = self.analyzer.analyze(image, faces)
+        attrs = self.analyzer.analyze(resized, faces)
+        if scale < 1.0:
+            inv = 1.0 / scale
+            for f in faces:
+                x1, y1, x2, y2 = f["bbox"]
+                f["bbox"] = (int(x1 * inv), int(y1 * inv),
+                             int(x2 * inv), int(y2 * inv))
         return [{**face, "attributes": attr}
                 for face, attr in zip(faces, attrs)]
 

@@ -1,0 +1,236 @@
+# Face ID Attr — 模块化人脸识别流水线
+
+一个基于 Python 的模块化人脸识别系统，支持人脸检测、关键点校正、特征提取、1:1 比对、1:N 身份识别和人脸属性分析。所有模块均可通过 YAML 配置文件灵活切换，无需修改代码。
+
+## 特性
+
+- **模块化架构**：检测、校正、识别、数据库、属性分析五大模块，各自独立，通过抽象基类约束接口
+- **配置驱动**：通过 `config.yaml` 动态加载模块，切换算法只需改配置
+- **多种检测器**：YOLO（v8/v11/v12/v26）、YuNet（OpenCV 轻量级）、OpenCV DNN/Haar
+- **PFLD 关键点校正**：集成 PFLD_GhostOne 98 点关键点模型，基于 5 关键点仿射变换对齐人脸
+- **SFace 特征提取**：基于 OpenCV FaceRecognizerSF，提取 128 维特征向量，纯 CPU 可运行
+- **向量数据库**：内置 NumPy 余弦相似度检索，支持注册、搜索、删除，可扩展为 FAISS/Milvus
+- **完整 CLI**：注册、识别、比对、检测、属性分析，支持单张和批量操作
+
+## 项目结构
+
+```
+face_id_attr/
+├── main.py                  # CLI 入口
+├── factory.py               # 根据 config.yaml 动态构建 pipeline
+├── pipeline.py              # FaceRecogPipeline 流水线核心
+├── config.yaml              # 模块配置文件
+├── requirements.txt         # Python 依赖
+├── module/
+│   ├── face_detection/      # 人脸检测模块
+│   │   ├── base.py          #   抽象基类 FaceDetector
+│   │   ├── yolo_detector.py #   YOLO 检测器 (Ultralytics)
+│   │   ├── yunet_detector.py#   YuNet 检测器 (OpenCV)
+│   │   └── opencv_detector.py#  OpenCV DNN / Haar 检测器
+│   ├── face_alignment/      # 人脸校正模块
+│   │   ├── base.py          #   抽象基类 FaceAligner
+│   │   ├── pfld_aligner.py  #   PFLD_GhostOne 98点关键点校正
+│   │   └── simple_aligner.py#   简单 5 点仿射变换校正
+│   ├── face_recognition/    # 人脸识别模块
+│   │   ├── base.py          #   抽象基类 FaceRecognizer
+│   │   ├── sface_recognizer.py # SFace 128维特征提取 (OpenCV)
+│   │   └── histogram_recognizer.py # 直方图特征 (演示用)
+│   ├── face_database/       # 人脸向量数据库
+│   │   ├── base.py          #   抽象基类 FaceDatabase
+│   │   └── numpy_db.py      #   NumPy 余弦相似度检索
+│   └── face_analysis/       # 人脸属性分析模块
+│       └── base.py          #   抽象基类 FaceAnalyzer
+├── models/                  # 模型文件 (不纳入 git)
+│   ├── yolo26m_wider_face/  #   YOLO 人脸检测模型
+│   ├── sface/               #   SFace 人脸识别模型
+│   ├── yunet/               #   YuNet 人脸检测模型
+│   ├── webface/             #   WebFace 识别模型
+│   └── PFLD_GhostOne_112_1_opt_sim.onnx  # PFLD 关键点模型
+├── known_faces/             # 已知人脸图片 (按身份分子文件夹)
+├── images/                  # 待识别图片
+└── results/                 # 识别结果输出
+```
+
+## 安装
+
+```bash
+pip install -r requirements.txt
+```
+
+依赖：
+- `opencv-python >= 4.5`
+- `numpy >= 1.20`
+- `pyyaml >= 6.0`
+- `ultralytics >= 8.3`（YOLO 检测器）
+- `onnxruntime >= 1.14`（PFLD 关键点校正）
+
+## 模型准备
+
+模型文件较大，不包含在仓库中，需自行下载放置到 `models/` 目录：
+
+| 模型 | 用途 | 路径 |
+|------|------|------|
+| YOLO WiderFace | 人脸检测 | `models/yolo26m_wider_face/weights/best.pt` |
+| YuNet | 人脸检测 (轻量) | `models/yunet/face_detection_yunet_2023mar.onnx` |
+| SFace | 人脸识别 (128维) | `models/sface/face_recognition_sface_2021dec.onnx` |
+| PFLD_GhostOne | 98点关键点 | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
+| WebFace | 人脸识别 | `models/webface/webface_r50.onnx` |
+
+## 使用方法
+
+### 1. 注册已知人脸
+
+将已知人脸图片按身份分类放入 `known_faces/` 目录：
+
+```
+known_faces/
+├── alice/
+│   ├── alice_001.jpg
+│   └── alice_002.jpg
+└── bob/
+    ├── bob_001.jpg
+    └── bob_002.jpg
+```
+
+批量注册：
+
+```bash
+python main.py register-dir
+python main.py register-dir --dir /path/to/known_faces
+```
+
+注册单张：
+
+```bash
+python main.py register --name alice --img face.jpg
+```
+
+### 2. 人脸识别 (1:N)
+
+```bash
+# 识别单张图片
+python main.py identify --img query.jpg --save
+
+# 批量识别目录下所有图片
+python main.py identify-dir --save --output-dir results
+
+# 指定阈值和 top-k
+python main.py identify --img query.jpg --threshold 0.6 --top-k 3
+```
+
+### 3. 人脸比对 (1:1)
+
+```bash
+python main.py compare --img1 a.jpg --img2 b.jpg
+```
+
+### 4. 人脸检测
+
+```bash
+# 检测单张
+python main.py detect --img face.jpg --save
+
+# 批量检测
+python main.py detect-dir --dir images/ --save --output-dir results
+```
+
+### 5. 人脸属性分析
+
+```bash
+python main.py analyze --img face.jpg --save
+python main.py analyze-dir --save --output-dir results
+```
+
+> 注：属性分析需要实现 `FaceAnalyzer` 子类并在 `config.yaml` 中配置 `analyzer`。
+
+### 6. 数据库管理
+
+```bash
+# 列出已注册身份
+python main.py list
+
+# 删除身份
+python main.py remove --name alice
+```
+
+## 配置说明
+
+通过 `config.yaml` 配置各模块，格式为：
+
+```yaml
+detector:
+  class: "module.face_detection.yolo_detector.YOLOFaceDetector"
+  params:
+    model_path: "models/yolo26m_wider_face/weights/best.pt"
+    conf_threshold: 0.5
+
+aligner:
+  class: "module.face_alignment.pfld_aligner.PFLDAligner"
+  params:
+    model_path: "models/PFLD_GhostOne_112_1_opt_sim.onnx"
+
+recognizer:
+  class: "module.face_recognition.sface_recognizer.SFaceRecognizer"
+  params:
+    model_path: "models/sface/face_recognition_sface_2021dec.onnx"
+
+database:
+  class: "module.face_database.numpy_db.NumpyFaceDatabase"
+  params: {}
+  db_path: "face_db.npz"
+
+analyzer: null
+```
+
+切换算法只需修改 `class` 和 `params`，无需改代码。
+
+## 可选检测器/识别器组合
+
+| 检测器 | 识别器 | 校正器 | 说明 |
+|--------|--------|--------|------|
+| YOLO + PFLD | SFace | PFLDAligner | 默认配置，精度高 |
+| YuNet | SFace | SFace alignCrop | 轻量级，纯 OpenCV |
+| OpenCV Haar | Histogram | SimpleAligner | 零依赖演示 |
+
+## 流水线架构
+
+```
+输入图像
+  │
+  ▼
+┌─────────────┐
+│  人脸检测    │  YOLOFaceDetector / YuNetDetector / OpenCVDetector
+└──────┬──────┘
+       │ faces: [{bbox, confidence, landmarks}, ...]
+       ▼
+┌─────────────┐
+│  人脸校正    │  PFLDAligner (98点) / SimpleAligner (5点) / SFace alignCrop
+└──────┬──────┘
+       │ aligned_face: 112x112 BGR
+       ▼
+┌─────────────┐
+│  特征提取    │  SFaceRecognizer (128维) / HistogramRecognizer
+└──────┬──────┘
+       │ feature: np.ndarray
+       ▼
+┌─────────────┐
+│  向量检索    │  NumpyFaceDatabase (余弦相似度)
+└──────┬──────┘
+       │ identity, similarity
+       ▼
+     输出结果
+```
+
+## 扩展开发
+
+实现对应的抽象基类即可添加新算法：
+
+- `FaceDetector`：实现 `detect(image) -> List[dict]`
+- `FaceAligner`：实现 `align(image, face) -> np.ndarray`
+- `FaceRecognizer`：实现 `extract(face_image) -> np.ndarray`
+- `FaceDatabase`：实现 `register()`, `search()`, `list_identities()`, `remove()`, `save()`, `load()`
+- `FaceAnalyzer`：实现 `analyze(image, faces) -> List[dict]`
+
+## License
+
+MIT

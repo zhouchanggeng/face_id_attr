@@ -1,5 +1,5 @@
 from .base import FaceRecognizer
 from .histogram_recognizer import HistogramRecognizer
-from .deepface_recognizer import DeepFaceRecognizer
+from .sface_recognizer import SFaceRecognizer
 
-__all__ = ["FaceRecognizer", "HistogramRecognizer", "DeepFaceRecognizer"]
+__all__ = ["FaceRecognizer", "HistogramRecognizer", "SFaceRecognizer"]
