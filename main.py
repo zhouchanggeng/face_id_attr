@@ -82,11 +82,14 @@ def _algo_tag(cfg):
     return f"{det}_{ali}_{rec}"
 
 
-def _default_output_dir(input_dir, cfg):
-    """生成默认输出目录名: result_{输入目录名}_{算法标签}"""
+def _default_output_dir(input_dir, cfg, task=""):
+    """生成默认输出目录名: result_{输入目录名}_{算法标签}_{任务名}"""
     dir_name = os.path.basename(os.path.normpath(input_dir))
     tag = _algo_tag(cfg)
-    return f"result_{dir_name}_{tag}"
+    name = f"result_{dir_name}_{tag}"
+    if task:
+        name += f"_{task}"
+    return name
 
 
 def _output_path(img_path, output_dir=None, input_dir=None):
@@ -168,7 +171,7 @@ def cmd_identify(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "identify")
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -223,7 +226,7 @@ def cmd_detect(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "detect")
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -256,7 +259,7 @@ def _draw_align_results(image, results, output_path, align_dir=None):
                 color = POINT_COLORS[j % len(POINT_COLORS)]
                 cv2.circle(vis, (int(px), int(py)), 4, color, -1)
                 cv2.putText(vis, POINT_NAMES[j], (int(px) + 5, int(py) - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
         aligned = r.get("aligned_face")
         if aligned is not None and align_dir:
             os.makedirs(align_dir, exist_ok=True)
@@ -287,7 +290,7 @@ def cmd_align(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "align")
         align_dir = os.path.join(out_dir, "aligned")
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
@@ -329,7 +332,7 @@ def cmd_quality(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "quality")
         csv_path = os.path.join(out_dir, "quality_report.csv")
         os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
         csv_lines = ["file,face_idx,bbox,quality"]
@@ -375,9 +378,9 @@ def _draw_quality_results(image, results, output_path):
             label = "Q:N/A"
         cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-        cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw, y1), color, -1)
-        cv2.putText(vis, label, (x1, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw + 4, y1), (255, 255, 255), -1)
+        cv2.putText(vis, label, (x1 + 2, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
     cv2.imwrite(output_path, vis)
 
 
@@ -413,7 +416,7 @@ def cmd_analyze(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "analyze")
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -531,7 +534,7 @@ def cmd_evaluate(args, pipe, cfg):
         raise FileNotFoundError(f"目录不存在: {test_dir}")
 
     threshold = args.threshold or cfg.get("identify_threshold", 0.5)
-    out_dir = args.output_dir or _default_output_dir(test_dir, cfg)
+    out_dir = args.output_dir or _default_output_dir(test_dir, cfg, "evaluate")
     os.makedirs(out_dir, exist_ok=True)
 
     # 收集测试数据: ground truth identity -> image paths
