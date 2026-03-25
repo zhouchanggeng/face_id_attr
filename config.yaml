@@ -58,12 +58,20 @@ database:
 # 如需属性分析，可实现基于其他库的 FaceAnalyzer
 analyzer: null
 
-# 人脸质量评估（FQA 模型，对齐后的人脸图像质量打分 0~1）
+# 人脸质量评估 - SER-FIQ（基于识别模型的特征稳定性评估，复用 ArcFace 模型）
 quality_assessor:
-  class: "module.face_quality.fqa_assessor.FQAAssessor"
+  class: "module.face_quality.serfiq_assessor.SERFIQAssessor"
   params:
-    model_path: "models/fqa_model.onnx"
+    model_path: "models/arcface/glint360k_r50.onnx"
+    num_perturbations: 10
     input_size: 112
+
+# 可选质量评估: 达摩院 FQA 模型
+# quality_assessor:
+#   class: "module.face_quality.fqa_assessor.FQAAssessor"
+#   params:
+#     model_path: "models/fqa_model.onnx"
+#     input_size: 112
 
 # 是否使用 SFace alignCrop 进行关键点对齐（需要 YuNet 检测器 + SFace 识别器）
 use_align_crop: true
