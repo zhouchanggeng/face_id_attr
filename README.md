@@ -273,6 +273,21 @@ analyzer: null
 - `FaceDatabase`：实现 `register()`, `search()`, `list_identities()`, `remove()`, `save()`, `load()`
 - `FaceAnalyzer`：实现 `analyze(image, faces) -> List[dict]`
 
+## TODO
+
+- [ ] 活体检测（Anti-Spoofing）— 防照片/视频/3D 面具攻击
+- [ ] 视线估计（Gaze Estimation）— 眼球注视方向预测
+- [ ] 人脸追踪（Face Tracking）— 视频流多目标人脸跟踪（DeepSORT / ByteTrack）
+- [ ] 人脸质量评估（Face Quality Assessment）— 模糊度、遮挡、光照、姿态评分
+- [ ] 口罩检测与遮挡人脸识别 — 戴口罩/墨镜场景下的检测与识别
+- [ ] 人脸属性分析 — 年龄、性别、表情、种族（轻量级 ONNX 模型替代 DeepFace）
+- [ ] 头部姿态估计（Head Pose Estimation）— 偏航角/俯仰角/翻滚角
+- [ ] 人脸分割（Face Parsing）— 面部区域语义分割（皮肤/眉毛/眼睛/嘴唇等）
+- [ ] 视频流实时推理 — RTSP / USB 摄像头实时人脸识别
+- [ ] FAISS / Milvus 向量数据库 — 大规模人脸库高效检索
+- [ ] REST API 服务 — FastAPI 封装，支持 HTTP 接口调用
+- [ ] 模型量化与边缘部署 — INT8 量化、TensorRT 加速、ONNX Runtime 优化
+
 ## License
 
 MIT
