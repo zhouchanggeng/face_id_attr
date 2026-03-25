@@ -328,6 +328,13 @@ quality_assessor:
 | 人脸检测数据集 | WiderFace | [WiderFace](http://shuoyang1213.me/WIDERFACE/) |
 | 关键点数据集 | WFLW (98点) | [WFLW](https://wywu.github.io/projects/LAB/WFLW.html) |
 
+## Related Projects
+
+- [InsightFace](https://github.com/deepinsight/insightface) — 开源 2D/3D 人脸分析工具箱，涵盖检测、识别、对齐、属性分析，提供 ArcFace / RetinaFace 等经典模型
+- [SeetaFace](https://github.com/seetafaceengine/SeetaFaceTutorial) — 中科视拓开源人脸识别引擎，包含人脸检测、关键点定位、识别、活体检测等完整模块
+- [libfacedetection](https://github.com/ShiqiYu/libfacedetection) — 于仕琪教授开源的轻量级 CNN 人脸检测库，支持 5 点关键点，适合嵌入式部署
+- [MNN_FaceTrack](https://github.com/qaz734913414/MNN_FaceTrack) — 基于阿里 MNN 推理框架的实时人脸追踪方案，集成检测 + 关键点 + 追踪
+
 ## License
 
 MIT
