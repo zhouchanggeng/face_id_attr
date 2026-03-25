@@ -227,11 +227,11 @@ class FaceRecogPipeline:
             x1, y1, x2, y2 = r["bbox"]
             matched = r.get("matched")
             if matched is True:
-                color = (0, 255, 0)
+                color = (0, 255, 0)    # 绿色 - 识别成功
             elif matched is False:
-                color = (0, 0, 255)
+                color = (0, 0, 255)    # 红色 - 未识别
             else:
-                color = (255, 0, 0)
+                color = (255, 0, 0)    # 蓝色 - 仅检测
             cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
 
             # 构建标签
@@ -242,6 +242,9 @@ class FaceRecogPipeline:
             similarity = r.get("similarity")
             if similarity is not None:
                 label_parts.append(f"{similarity:.2f}")
+            quality = r.get("quality")
+            if quality is not None:
+                label_parts.append(f"Q:{quality:.2f}")
             if not label_parts:
                 label_parts.append(f"{r.get('confidence', 0):.2f}")
 
@@ -257,17 +260,17 @@ class FaceRecogPipeline:
             if attr.get("dominant_race"):
                 attr_lines.append(attr["dominant_race"])
 
+            # 文字黑色，白色背景
             label = " ".join(label_parts)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw, y1), color, -1)
-            cv2.putText(vis, label, (x1, y1 - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw + 4, y1), (255, 255, 255), -1)
+            cv2.putText(vis, label, (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
 
-            # 在 bbox 下方逐行绘制属性
             for i, line in enumerate(attr_lines):
                 ty = y2 + 18 + i * 20
                 cv2.putText(vis, line, (x1, ty),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         cv2.imwrite(output_path, vis)
         return output_path

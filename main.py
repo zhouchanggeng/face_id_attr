@@ -54,6 +54,41 @@ def _save_db(pipe, cfg):
         print(f"数据库已保存: {db_path}")
 
 
+def _algo_tag(cfg):
+    """从配置中提取算法短名，用于自动命名输出目录。
+
+    返回格式: "检测器_对齐器_识别器"，如 "yolo26m_pfld_arcface_glint360k"
+    """
+    def _short_name(module_cfg):
+        if not module_cfg:
+            return "none"
+        model_path = (module_cfg.get("params") or {}).get("model_path", "")
+        if model_path:
+            # 取模型文件名（不含扩展名），去掉常见后缀
+            name = os.path.splitext(os.path.basename(model_path))[0]
+            # 简化: 去掉常见冗余后缀
+            for suffix in ["_opt_sim", "_facedetect_widerface", "_2021dec",
+                           "_2023mar", "_int8", "_int8bq", "_112_1",
+                           "face_detection_", "face_recognition_"]:
+                name = name.replace(suffix, "")
+            return name
+        # fallback: 取类名
+        cls_name = module_cfg.get("class", "")
+        return cls_name.rsplit(".", 1)[-1] if cls_name else "unknown"
+
+    det = _short_name(cfg.get("detector"))
+    ali = _short_name(cfg.get("aligner"))
+    rec = _short_name(cfg.get("recognizer"))
+    return f"{det}_{ali}_{rec}"
+
+
+def _default_output_dir(input_dir, cfg):
+    """生成默认输出目录名: result_{输入目录名}_{算法标签}"""
+    dir_name = os.path.basename(os.path.normpath(input_dir))
+    tag = _algo_tag(cfg)
+    return f"result_{dir_name}_{tag}"
+
+
 def _output_path(img_path, output_dir=None, input_dir=None):
     """生成结果图片保存路径，保留相对子目录结构。"""
     out_dir = output_dir or "results"
@@ -133,6 +168,7 @@ def cmd_identify(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -150,7 +186,7 @@ def cmd_identify(args, pipe, cfg):
                 else:
                     print(f"{filename}: 未识别 (最高相似度: {r['similarity']:.4f}{q})")
             if args.save:
-                out = _output_path(img_path, args.output_dir, images_dir)
+                out = _output_path(img_path, out_dir, images_dir)
                 pipe.draw_results(img, results, out)
                 print(f"  -> 保存: {out}")
 
@@ -187,6 +223,7 @@ def cmd_detect(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -196,7 +233,7 @@ def cmd_detect(args, pipe, cfg):
             filename = os.path.relpath(img_path, images_dir)
             print(f"{filename}: 检测到 {len(faces)} 张人脸")
             if args.save:
-                out = _output_path(img_path, args.output_dir, images_dir)
+                out = _output_path(img_path, out_dir, images_dir)
                 pipe.draw_results(img, faces, out)
                 print(f"  -> 保存: {out}")
 
@@ -250,7 +287,7 @@ def cmd_align(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        out_dir = args.output_dir or "results"
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
         align_dir = os.path.join(out_dir, "aligned")
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
@@ -292,9 +329,9 @@ def cmd_quality(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
-        # 汇总 CSV
-        csv_path = os.path.join(args.output_dir or "results", "quality_report.csv")
-        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
+        csv_path = os.path.join(out_dir, "quality_report.csv")
+        os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
         csv_lines = ["file,face_idx,bbox,quality"]
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
@@ -313,7 +350,7 @@ def cmd_quality(args, pipe, cfg):
                 bbox_str = f"{r['bbox'][0]}_{r['bbox'][1]}_{r['bbox'][2]}_{r['bbox'][3]}"
                 csv_lines.append(f"{filename},{i},{bbox_str},{q_str}")
             if args.save:
-                out = _output_path(img_path, args.output_dir, images_dir)
+                out = _output_path(img_path, out_dir, images_dir)
                 _draw_quality_results(img, results, out)
                 print(f"  -> 保存: {out}")
         with open(csv_path, "w", encoding="utf-8") as f:
@@ -376,6 +413,7 @@ def cmd_analyze(args, pipe, cfg):
         images_dir = args.dir or cfg.get("images_dir", "images")
         if not os.path.isdir(images_dir):
             raise FileNotFoundError(f"目录不存在: {images_dir}")
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg)
         for img_path in _iter_images(images_dir):
             img = cv2.imread(img_path)
             if img is None:
@@ -389,7 +427,7 @@ def cmd_analyze(args, pipe, cfg):
             for r in results:
                 _print_attr(f"{filename}: ", r)
             if args.save:
-                out = _output_path(img_path, args.output_dir, images_dir)
+                out = _output_path(img_path, out_dir, images_dir)
                 pipe.draw_results(img, results, out)
                 print(f"  -> 保存: {out}")
 
