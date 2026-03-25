@@ -117,10 +117,11 @@ def cmd_identify(args, pipe, cfg):
         results = pipe.identify(img, threshold=threshold, top_k=args.top_k)
         print(f"检测到 {len(results)} 张人脸:")
         for i, r in enumerate(results):
+            q = f", 质量:{r['quality']:.2f}" if r.get("quality") is not None else ""
             if r["matched"]:
-                print(f"  [{i}] 身份: {r['identity']}, 相似度: {r['similarity']:.4f}")
+                print(f"  [{i}] 身份: {r['identity']}, 相似度: {r['similarity']:.4f}{q}")
             else:
-                print(f"  [{i}] 未识别 (最高相似度: {r['similarity']:.4f})")
+                print(f"  [{i}] 未识别 (最高相似度: {r['similarity']:.4f}){q}")
             if args.top_k > 1 and r["top_k"]:
                 for ident, sim in r["top_k"]:
                     print(f"        -> {ident}: {sim:.4f}")
@@ -143,10 +144,11 @@ def cmd_identify(args, pipe, cfg):
                 print(f"{filename}: 未检测到人脸")
                 continue
             for r in results:
+                q = f", 质量:{r['quality']:.2f}" if r.get("quality") is not None else ""
                 if r["matched"]:
-                    print(f"{filename}: {r['identity']} (相似度: {r['similarity']:.4f})")
+                    print(f"{filename}: {r['identity']} (相似度: {r['similarity']:.4f}{q})")
                 else:
-                    print(f"{filename}: 未识别 (最高相似度: {r['similarity']:.4f})")
+                    print(f"{filename}: 未识别 (最高相似度: {r['similarity']:.4f}{q})")
             if args.save:
                 out = _output_path(img_path, args.output_dir, images_dir)
                 pipe.draw_results(img, results, out)
@@ -236,7 +238,8 @@ def cmd_align(args, pipe, cfg):
         print(f"检测到 {len(results)} 张人脸:")
         for i, r in enumerate(results):
             pts_info = "有" if r["five_points"] is not None else "无"
-            print(f"  [{i}] bbox={r['bbox']}, conf={r['confidence']:.3f}, 关键点={pts_info}")
+            q = f", 质量:{r['quality']:.2f}" if r.get("quality") is not None else ""
+            print(f"  [{i}] bbox={r['bbox']}, conf={r['confidence']:.3f}, 关键点={pts_info}{q}")
         if args.save and results:
             out = _output_path(args.img, args.output_dir)
             align_dir = os.path.join(args.output_dir or "results", "aligned")
@@ -261,6 +264,84 @@ def cmd_align(args, pipe, cfg):
                 out = _output_path(img_path, out_dir, images_dir)
                 _draw_align_results(img, results, out, align_dir)
                 print(f"  -> 保存: {out}")
+
+
+# ---- quality ----
+
+def cmd_quality(args, pipe, cfg):
+    """人脸质量评估：检测 -> 对齐 -> 质量打分。"""
+    if pipe.quality_assessor is None:
+        print("错误: 未配置人脸质量评估器 (quality_assessor)")
+        return
+
+    if args.img:
+        img = cv2.imread(args.img)
+        if img is None:
+            raise FileNotFoundError(f"无法读取图片: {args.img}")
+        results = pipe.align_faces(img)
+        print(f"检测到 {len(results)} 张人脸:")
+        for i, r in enumerate(results):
+            q = r.get("quality")
+            q_str = f"{q:.4f}" if q is not None else "N/A"
+            print(f"  [{i}] bbox={r['bbox']}, 质量={q_str}")
+        if args.save and results:
+            out = _output_path(args.img, args.output_dir)
+            _draw_quality_results(img, results, out)
+            print(f"结果已保存: {out}")
+    else:
+        images_dir = args.dir or cfg.get("images_dir", "images")
+        if not os.path.isdir(images_dir):
+            raise FileNotFoundError(f"目录不存在: {images_dir}")
+        # 汇总 CSV
+        csv_path = os.path.join(args.output_dir or "results", "quality_report.csv")
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        csv_lines = ["file,face_idx,bbox,quality"]
+        for img_path in _iter_images(images_dir):
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"[跳过] 无法读取: {img_path}")
+                continue
+            results = pipe.align_faces(img)
+            filename = os.path.relpath(img_path, images_dir)
+            if not results:
+                print(f"{filename}: 未检测到人脸")
+                continue
+            for i, r in enumerate(results):
+                q = r.get("quality")
+                q_str = f"{q:.4f}" if q is not None else "N/A"
+                print(f"{filename}: [{i}] 质量={q_str}")
+                bbox_str = f"{r['bbox'][0]}_{r['bbox'][1]}_{r['bbox'][2]}_{r['bbox'][3]}"
+                csv_lines.append(f"{filename},{i},{bbox_str},{q_str}")
+            if args.save:
+                out = _output_path(img_path, args.output_dir, images_dir)
+                _draw_quality_results(img, results, out)
+                print(f"  -> 保存: {out}")
+        with open(csv_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(csv_lines))
+        print(f"\n质量报告已保存: {csv_path}")
+
+
+def _draw_quality_results(image, results, output_path):
+    """在图片上绘制 bbox 和质量分。"""
+    vis = image.copy()
+    for r in results:
+        x1, y1, x2, y2 = r["bbox"]
+        q = r.get("quality")
+        # 颜色按质量分渐变: 红(差) -> 绿(好)
+        if q is not None:
+            green = int(q * 255)
+            red = int((1 - q) * 255)
+            color = (0, green, red)
+            label = f"Q:{q:.2f}"
+        else:
+            color = (128, 128, 128)
+            label = "Q:N/A"
+        cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+        cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw, y1), color, -1)
+        cv2.putText(vis, label, (x1, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    cv2.imwrite(output_path, vis)
 
 
 # ---- analyze ----
@@ -450,6 +531,12 @@ def main():
     p_ana.add_argument("--save", action="store_true", help="保存结果图片")
     p_ana.add_argument("--output-dir", default=None, help="结果保存目录 (默认: results)")
 
+    # quality
+    p_qa = sub.add_parser("quality", help="人脸质量评估 (--img 单张 / --dir 批量，批量输出 CSV 报告)")
+    _add_img_dir_args(p_qa)
+    p_qa.add_argument("--save", action="store_true", help="保存结果图片")
+    p_qa.add_argument("--output-dir", default=None, help="结果保存目录 (默认: results)")
+
     # list / remove / visualize
     sub.add_parser("list", help="列出已注册身份")
     p_rm = sub.add_parser("remove", help="删除已注册身份")
@@ -474,6 +561,7 @@ def main():
         "detect": cmd_detect,
         "align": cmd_align,
         "analyze": cmd_analyze,
+        "quality": cmd_quality,
         "list": cmd_list,
         "remove": cmd_remove,
         "visualize": cmd_visualize,

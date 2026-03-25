@@ -2,23 +2,23 @@
 # 每个模块通过 class 指定 "模块路径.类名"，params 传入构造函数参数
 # 切换算法只需修改 class 和 params，无需改代码
 
-detector:
-  class: "module.face_detection.yolo_detector.YOLOFaceDetector"
-  params:
-    model_path: "models/yolo26m_wider_face/weights/best.pt"
-    conf_threshold: 0.5
-    iou_threshold: 0.45
-    imgsz: 640
-    device: "cuda:0"
-
-# 可选检测器: YOLO ONNX（不依赖 PyTorch，适合部署）
 # detector:
 #   class: "module.face_detection.yolo_detector.YOLOFaceDetector"
 #   params:
-#     model_path: "models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx"
+#     model_path: "models/yolo26m_wider_face/weights/best.pt"
 #     conf_threshold: 0.5
 #     iou_threshold: 0.45
 #     imgsz: 640
+#     device: "cuda:0"
+
+可选检测器: YOLO ONNX（不依赖 PyTorch，适合部署）
+detector:
+  class: "module.face_detection.yolo_detector.YOLOFaceDetector"
+  params:
+    model_path: "models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx"
+    conf_threshold: 0.5
+    iou_threshold: 0.45
+    imgsz: 640
 
 # 可选检测器: YuNet（轻量级，带 5 点 landmarks，配合 SFace alignCrop 效果好）
 # detector:
@@ -51,6 +51,13 @@ database:
 # 人脸属性分析（已禁用，移除 deepface 依赖后不可用）
 # 如需属性分析，可实现基于其他库的 FaceAnalyzer
 analyzer: null
+
+# 人脸质量评估（FQA 模型，对齐后的人脸图像质量打分 0~1）
+quality_assessor:
+  class: "module.face_quality.fqa_assessor.FQAAssessor"
+  params:
+    model_path: "models/fqa_model.onnx"
+    input_size: 112
 
 # 是否使用 SFace alignCrop 进行关键点对齐（需要 YuNet 检测器 + SFace 识别器）
 use_align_crop: true

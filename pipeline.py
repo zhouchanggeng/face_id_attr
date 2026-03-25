@@ -7,12 +7,13 @@ from module.face_alignment.base import FaceAligner
 from module.face_recognition.base import FaceRecognizer
 from module.face_database.base import FaceDatabase
 from module.face_analysis.base import FaceAnalyzer
+from module.face_quality.base import FaceQualityAssessor
 
 
 class FaceRecogPipeline:
     """
-    人脸识别流水线：检测 -> (可选)校正 -> 识别/比对/属性分析。
-    支持 1:1 比对、1:N 搜索、人脸注册、属性分析。
+    人脸识别流水线：检测 -> (可选)校正 -> (可选)质量评估 -> 识别/比对/属性分析。
+    支持 1:1 比对、1:N 搜索、人脸注册、属性分析、质量评估。
     """
 
     def __init__(
@@ -22,6 +23,7 @@ class FaceRecogPipeline:
         aligner: Optional[FaceAligner] = None,
         database: Optional[FaceDatabase] = None,
         analyzer: Optional[FaceAnalyzer] = None,
+        quality_assessor: Optional[FaceQualityAssessor] = None,
         use_align_crop: bool = True,
         max_image_size: int = 1920,
     ):
@@ -30,6 +32,7 @@ class FaceRecogPipeline:
         self.recognizer = recognizer
         self.database = database
         self.analyzer = analyzer
+        self.quality_assessor = quality_assessor
         self.use_align_crop = use_align_crop
         self.max_image_size = max_image_size
 
@@ -72,15 +75,17 @@ class FaceRecogPipeline:
         return faces
 
     def extract(self, image: np.ndarray) -> List[dict]:
-        """检测 + (可选校正) + 特征提取。在缩放后的图上裁剪人脸以保证质量。"""
+        """检测 + (可选校正) + (可选质量评估) + 特征提取。"""
         resized, scale = self._limit_size(image, self.max_image_size)
         faces = self.detector.detect(resized)
         results = []
         for face in faces:
-            # 在缩放后的图上裁剪/对齐，保证裁剪区域与 112x112 的缩放比合理
             face_img = self._get_face_image(resized, face)
+            # 质量评估（在对齐后、特征提取前）
+            quality_score = None
+            if self.quality_assessor is not None:
+                quality_score = self.quality_assessor.assess(face_img)
             feat = self.recognizer.extract(face_img)
-            # bbox 映射回原图坐标（用于绘图）
             if scale < 1.0:
                 inv = 1.0 / scale
                 x1, y1, x2, y2 = face["bbox"]
@@ -88,7 +93,7 @@ class FaceRecogPipeline:
                                 int(x2 * inv), int(y2 * inv))
                 if face.get("landmarks") is not None:
                     face["landmarks"] = (face["landmarks"] * inv).astype(np.float32)
-            results.append({**face, "feature": feat})
+            results.append({**face, "feature": feat, "quality": quality_score})
         return results
 
     def align_faces(self, image: np.ndarray) -> List[dict]:
@@ -124,11 +129,17 @@ class FaceRecogPipeline:
                 if five_pts is not None:
                     five_pts = (five_pts * inv).astype(np.float32)
 
+            # 质量评估
+            quality_score = None
+            if self.quality_assessor is not None:
+                quality_score = self.quality_assessor.assess(face_img)
+
             results.append({
                 "bbox": face["bbox"],
                 "confidence": face["confidence"],
                 "five_points": five_pts,
                 "aligned_face": face_img,
+                "quality": quality_score,
             })
         return results
 

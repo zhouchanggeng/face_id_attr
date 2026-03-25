@@ -79,6 +79,7 @@ pip install -r requirements.txt
 | YuNet | 人脸检测 (轻量) | ONNX | `models/yunet/face_detection_yunet_2023mar.onnx` |
 | SFace | 人脸识别 (128维) | ONNX | `models/sface/face_recognition_sface_2021dec.onnx` |
 | PFLD_GhostOne | 98点关键点 | ONNX | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
+| FQA | 人脸质量评估 | ONNX | `models/fqa_model.onnx` |
 
 > YOLO 检测器同时支持 `.pt` 和 `.onnx` 格式，ONNX 格式不依赖 PyTorch，适合部署场景。
 | WebFace | 人脸识别 | `models/webface/webface_r50.onnx` |
@@ -134,30 +135,35 @@ python main.py compare --img1 a.jpg --img2 b.jpg
 ### 4. 人脸检测
 
 ```bash
-# 检测单张
 python main.py detect --img face.jpg --save
-
-# 批量检测
-python main.py detect-dir --dir images/ --save --output-dir results
+python main.py detect --dir images/ --save --output-dir results
 ```
 
 ### 5. 人脸关键点对齐
 
-在原图上绘制 5 个关键点（左眼、右眼、鼻尖、左嘴角、右嘴角），同时保存 align 后的 112x112 人脸图像。
-
 ```bash
-# 单张图片
 python main.py align --img face.jpg --save
-
-# 批量处理
-python main.py align-dir --dir images/ --save --output-dir results
+python main.py align --dir images/ --save --output-dir results
 ```
 
 输出：
 - `results/xxx_result.jpg` — 原图标注 bbox + 5 彩色关键点
 - `results/aligned/xxx_result_face0.jpg` — 对齐后的 112x112 人脸
 
-### 6. 特征可视化
+### 6. 人脸质量评估
+
+基于达摩院 FQA 模型，对对齐后的人脸图像打分（0~1，越高越好）。批量模式自动生成 CSV 报告。
+
+```bash
+python main.py quality --img face.jpg --save
+python main.py quality --dir images/ --save --output-dir results_quality
+```
+
+输出：
+- `results/xxx_result.jpg` — 原图标注 bbox + 质量分（颜色渐变：红=差，绿=好）
+- `results_quality/quality_report.csv` — 批量质量评估报告
+
+### 7. 特征可视化
 
 将已注册的人脸特征降维到 2D 可视化，分析身份聚类质量和类内相似度。
 
@@ -174,16 +180,16 @@ python main.py visualize --method umap
 
 输出散点图（不同身份不同颜色）和类内相似度统计（mean/min/max）。
 
-### 7. 人脸属性分析
+### 8. 人脸属性分析
 
 ```bash
 python main.py analyze --img face.jpg --save
-python main.py analyze-dir --save --output-dir results
+python main.py analyze --dir images/ --save
 ```
 
 > 注：属性分析需要实现 `FaceAnalyzer` 子类并在 `config.yaml` 中配置 `analyzer`。
 
-### 8. 数据库管理
+### 9. 数据库管理
 
 ```bash
 # 列出已注册身份
@@ -221,6 +227,11 @@ database:
   db_path: "face_db.npz"
 
 analyzer: null
+
+quality_assessor:
+  class: "module.face_quality.fqa_assessor.FQAAssessor"
+  params:
+    model_path: "models/fqa_model.onnx"
 ```
 
 切换算法只需修改 `class` 和 `params`，无需改代码。
@@ -251,6 +262,11 @@ analyzer: null
        │ aligned_face: 112x112 BGR
        ▼
 ┌─────────────┐
+│  质量评估    │  FQAAssessor (0~1 质量分，可选)
+└──────┬──────┘
+       │ quality: float
+       ▼
+┌─────────────┐
 │  特征提取    │  SFaceRecognizer (128维) / HistogramRecognizer
 └──────┬──────┘
        │ feature: np.ndarray
@@ -272,13 +288,14 @@ analyzer: null
 - `FaceRecognizer`：实现 `extract(face_image) -> np.ndarray`
 - `FaceDatabase`：实现 `register()`, `search()`, `list_identities()`, `remove()`, `save()`, `load()`
 - `FaceAnalyzer`：实现 `analyze(image, faces) -> List[dict]`
+- `FaceQualityAssessor`：实现 `assess(face_image) -> float`
 
 ## TODO
 
 - [ ] 活体检测（Anti-Spoofing）— 防照片/视频/3D 面具攻击
 - [ ] 视线估计（Gaze Estimation）— 眼球注视方向预测
 - [ ] 人脸追踪（Face Tracking）— 视频流多目标人脸跟踪（DeepSORT / ByteTrack）
-- [ ] 人脸质量评估（Face Quality Assessment）— 模糊度、遮挡、光照、姿态评分
+- [x] 人脸质量评估（Face Quality Assessment）— 达摩院 FQA 模型，0~1 质量打分 + CSV 报告
 - [ ] 口罩检测与遮挡人脸识别 — 戴口罩/墨镜场景下的检测与识别
 - [ ] 人脸属性分析 — 年龄、性别、表情、种族（轻量级 ONNX 模型替代 DeepFace）
 - [ ] 头部姿态估计（Head Pose Estimation）— 偏航角/俯仰角/翻滚角
