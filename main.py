@@ -522,6 +522,141 @@ def cmd_visualize(args, pipe, cfg):
         print(f"  {uid}: 类内相似度 mean={intra_sims.mean():.4f}, min={intra_sims.min():.4f}, max={intra_sims.max():.4f}")
 
 
+# ---- video ----
+
+def cmd_video(args, pipe, cfg):
+    """视频人脸识别：检测 + 跟踪 + 识别，输出标注视频。"""
+    from module.face_tracking.iou_tracker import IoUTracker
+
+    pipe._require_db()
+    video_path = args.input
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError(f"视频文件不存在: {video_path}")
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"无法打开视频: {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    threshold = args.threshold or cfg.get("identify_threshold", 0.5)
+
+    # 输出路径
+    tag = _algo_tag(cfg)
+    base = os.path.splitext(os.path.basename(video_path))[0]
+    out_dir = args.output_dir or f"result_{base}_{tag}_video"
+    os.makedirs(out_dir, exist_ok=True)
+    out_video = os.path.join(out_dir, f"{base}_result.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(out_video, fourcc, fps, (w, h))
+
+    tracker = IoUTracker(
+        iou_threshold=args.iou_threshold,
+        max_missed=int(fps * 0.5),  # 0.5 秒未匹配则删除
+        recognize_interval=int(fps * args.recog_interval),
+    )
+
+    print(f"视频: {video_path} ({w}x{h}, {fps:.1f}fps, {total_frames} 帧)")
+    print(f"识别阈值: {threshold}, 识别间隔: {args.recog_interval}s")
+    print(f"输出: {out_video}\n")
+
+    frame_idx = 0
+    id_log = {}  # track_id -> {identity, first_frame, last_frame, appearances}
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # 检测
+        resized, scale = pipe._limit_size(frame, pipe.max_image_size)
+        detections = pipe.detector.detect(resized)
+        if scale < 1.0:
+            inv = 1.0 / scale
+            for d in detections:
+                x1, y1, x2, y2 = d["bbox"]
+                d["bbox"] = (int(x1 * inv), int(y1 * inv),
+                             int(x2 * inv), int(y2 * inv))
+
+        # 跟踪
+        tracks = tracker.update(detections)
+
+        # 识别需要识别的 track
+        for track in tracks:
+            if tracker.needs_recognition(track):
+                x1, y1, x2, y2 = track.bbox
+                face_img = pipe._get_face_image(frame, {"bbox": track.bbox, "landmarks": None})
+                feat = pipe.recognizer.extract(face_img)
+                track.feature = feat
+                hits = pipe.database.search(feat, top_k=1)
+                if hits and hits[0][1] >= threshold:
+                    track.identity = hits[0][0]
+                    track.similarity = hits[0][1]
+                else:
+                    track.identity = None
+                    track.similarity = hits[0][1] if hits else 0.0
+                track.recognized = True
+
+        # 绘制
+        vis = frame.copy()
+        for track in tracks:
+            x1, y1, x2, y2 = track.bbox
+            if track.identity:
+                color = (0, 255, 0)
+                label = f"#{track.track_id} {track.identity} {track.similarity:.2f}"
+            else:
+                color = (0, 0, 255)
+                label = f"#{track.track_id} unknown"
+            cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+            (tw, th_), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(vis, (x1, y1 - th_ - 6), (x1 + tw + 4, y1), (255, 255, 255), -1)
+            cv2.putText(vis, label, (x1 + 2, y1 - 3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+            # 记录日志
+            tid = track.track_id
+            if tid not in id_log:
+                id_log[tid] = {"identity": track.identity, "first_frame": frame_idx,
+                               "last_frame": frame_idx, "max_sim": track.similarity}
+            else:
+                id_log[tid]["last_frame"] = frame_idx
+                if track.identity:
+                    id_log[tid]["identity"] = track.identity
+                    id_log[tid]["max_sim"] = max(id_log[tid]["max_sim"], track.similarity)
+
+        writer.write(vis)
+        frame_idx += 1
+        if frame_idx % 100 == 0:
+            print(f"  处理中: {frame_idx}/{total_frames} ({frame_idx/max(total_frames,1)*100:.0f}%)")
+
+    cap.release()
+    writer.release()
+    print(f"\n处理完成: {frame_idx} 帧")
+    print(f"输出视频: {out_video}")
+
+    # 保存跟踪日志
+    log_path = os.path.join(out_dir, "track_log.csv")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("track_id,identity,first_frame,last_frame,duration_frames,max_similarity\n")
+        for tid in sorted(id_log.keys()):
+            info = id_log[tid]
+            duration = info["last_frame"] - info["first_frame"] + 1
+            ident = info["identity"] or "unknown"
+            f.write(f"{tid},{ident},{info['first_frame']},{info['last_frame']},{duration},{info['max_sim']:.4f}\n")
+    print(f"跟踪日志: {log_path}")
+
+    # 打印摘要
+    identities = set(v["identity"] for v in id_log.values() if v["identity"])
+    print(f"\n识别到 {len(identities)} 个身份, {len(id_log)} 条轨迹:")
+    for ident in sorted(identities):
+        tracks_of = [v for v in id_log.values() if v["identity"] == ident]
+        total_dur = sum(v["last_frame"] - v["first_frame"] + 1 for v in tracks_of)
+        max_sim = max(v["max_sim"] for v in tracks_of)
+        print(f"  {ident}: {len(tracks_of)} 条轨迹, {total_dur} 帧, 最高相似度 {max_sim:.4f}")
+
+
 # ---- evaluate ----
 
 def cmd_evaluate(args, pipe, cfg):
@@ -820,6 +955,14 @@ def main():
     p_eval.add_argument("--threshold", type=float, default=None, help="识别阈值")
     p_eval.add_argument("--output-dir", default=None, help="评测报告保存目录")
 
+    # video
+    p_vid = sub.add_parser("video", help="视频人脸识别 (检测+跟踪+识别)")
+    p_vid.add_argument("--input", required=True, help="输入视频路径")
+    p_vid.add_argument("--threshold", type=float, default=None, help="识别阈值")
+    p_vid.add_argument("--iou-threshold", type=float, default=0.3, help="跟踪 IoU 阈值")
+    p_vid.add_argument("--recog-interval", type=float, default=2.0, help="重新识别间隔 (秒)")
+    p_vid.add_argument("--output-dir", default=None, help="输出目录")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -839,6 +982,7 @@ def main():
         "remove": cmd_remove,
         "visualize": cmd_visualize,
         "evaluate": cmd_evaluate,
+        "video": cmd_video,
     }
     commands[args.command](args, pipe, cfg)
 
