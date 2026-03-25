@@ -519,6 +519,232 @@ def cmd_visualize(args, pipe, cfg):
         print(f"  {uid}: 类内相似度 mean={intra_sims.mean():.4f}, min={intra_sims.min():.4f}, max={intra_sims.max():.4f}")
 
 
+# ---- evaluate ----
+
+def cmd_evaluate(args, pipe, cfg):
+    """评测人脸识别性能。测试目录结构: test_dir/{identity}/xxx.jpg"""
+    import numpy as np
+
+    pipe._require_db()
+    test_dir = args.dir
+    if not os.path.isdir(test_dir):
+        raise FileNotFoundError(f"目录不存在: {test_dir}")
+
+    threshold = args.threshold or cfg.get("identify_threshold", 0.5)
+    out_dir = args.output_dir or _default_output_dir(test_dir, cfg)
+    os.makedirs(out_dir, exist_ok=True)
+
+    # 收集测试数据: ground truth identity -> image paths
+    gt_data = []
+    for identity in sorted(os.listdir(test_dir)):
+        id_dir = os.path.join(test_dir, identity)
+        if not os.path.isdir(id_dir):
+            continue
+        for img_path in _iter_images(id_dir):
+            gt_data.append((identity, img_path))
+
+    if not gt_data:
+        print("测试目录为空")
+        return
+
+    print(f"评测数据: {len(gt_data)} 张图片, {len(set(g[0] for g in gt_data))} 个身份")
+    print(f"识别阈值: {threshold}\n")
+
+    # 逐张识别
+    results_log = []  # (gt_id, pred_id, similarity, matched, quality)
+    all_similarities = []  # (similarity, is_same_person)
+
+    for gt_id, img_path in gt_data:
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"[跳过] 无法读取: {img_path}")
+            continue
+        faces = pipe.extract(img)
+        if not faces:
+            results_log.append((gt_id, None, 0.0, False, None))
+            continue
+        # 取最大人脸
+        face = max(faces, key=lambda f: (f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]))
+        hits = pipe.database.search(face["feature"], top_k=1)
+        if hits:
+            pred_id, sim = hits[0]
+            matched = sim >= threshold
+            quality = face.get("quality")
+            results_log.append((gt_id, pred_id if matched else None, sim, matched, quality))
+            # 记录相似度用于 ROC
+            is_same = (pred_id == gt_id)
+            all_similarities.append((sim, is_same))
+        else:
+            results_log.append((gt_id, None, 0.0, False, face.get("quality")))
+
+    # ---- 1:N Rank-1 指标 ----
+    total = len(results_log)
+    no_face = sum(1 for r in results_log if r[1] is None and r[2] == 0.0 and not r[3])
+    detected = total - no_face  # 排除未检测到人脸的
+
+    # Rank-1: 预测身份 == GT 身份（不考虑阈值，只看 top-1 是否正确）
+    rank1_correct = sum(1 for gt, pred_id, sim, matched, _ in results_log
+                        if sim > 0 and _get_top1_id(pipe, gt, results_log, all_similarities, gt_id=gt) == gt)
+    # 简化: 直接用 all_similarities 中 is_same=True 的
+    rank1_correct = sum(1 for sim, is_same in all_similarities if is_same)
+    rank1_acc = rank1_correct / max(detected, 1)
+
+    # 在当前阈值下的指标
+    tp = sum(1 for gt, pred, sim, matched, _ in results_log if matched and pred == gt)
+    fp = sum(1 for gt, pred, sim, matched, _ in results_log if matched and pred != gt)
+    fn = sum(1 for gt, pred, sim, matched, _ in results_log if not matched or pred != gt)
+
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-9)
+
+    print("=" * 60)
+    print(f"{'评测结果':^56}")
+    print("=" * 60)
+    print(f"  总图片数:       {total}")
+    print(f"  检测到人脸:     {detected} ({detected/max(total,1)*100:.1f}%)")
+    print(f"  识别阈值:       {threshold}")
+    print(f"  Rank-1 准确率:  {rank1_acc:.4f} ({rank1_correct}/{detected})")
+    print(f"  Precision:      {precision:.4f}")
+    print(f"  Recall:         {recall:.4f}")
+    print(f"  F1-Score:       {f1:.4f}")
+    print(f"  TP={tp}, FP={fp}, FN={fn}")
+    print("=" * 60)
+
+    # ---- 每个身份的详细指标 ----
+    gt_ids = sorted(set(r[0] for r in results_log))
+    print(f"\n{'身份':<20} {'总数':>4} {'正确':>4} {'错误':>4} {'未识别':>6} {'准确率':>8}")
+    print("-" * 56)
+    for gid in gt_ids:
+        id_results = [r for r in results_log if r[0] == gid]
+        id_total = len(id_results)
+        id_correct = sum(1 for r in id_results if r[3] and r[1] == gid)
+        id_wrong = sum(1 for r in id_results if r[3] and r[1] != gid)
+        id_miss = id_total - id_correct - id_wrong
+        id_acc = id_correct / max(id_total, 1)
+        print(f"  {gid:<18} {id_total:>4} {id_correct:>4} {id_wrong:>4} {id_miss:>6} {id_acc:>8.2%}")
+
+    # ---- ROC 曲线 & AUC ----
+    if all_similarities:
+        _plot_roc(all_similarities, out_dir, threshold)
+
+    # ---- 保存详细 CSV ----
+    csv_path = os.path.join(out_dir, "evaluate_report.csv")
+    with open(csv_path, "w", encoding="utf-8") as f:
+        f.write("image,gt_identity,pred_identity,similarity,matched,quality\n")
+        for (gt_id, img_path), (_, pred, sim, matched, quality) in zip(gt_data, results_log):
+            fname = os.path.relpath(img_path, test_dir)
+            q_str = f"{quality:.4f}" if quality is not None else ""
+            pred_str = pred or ""
+            f.write(f"{fname},{gt_id},{pred_str},{sim:.4f},{matched},{q_str}\n")
+    print(f"\n详细报告已保存: {csv_path}")
+
+    # ---- 保存汇总 ----
+    summary_path = os.path.join(out_dir, "evaluate_summary.txt")
+    with open(summary_path, "w", encoding="utf-8") as f:
+        tag = _algo_tag(cfg)
+        f.write(f"算法配置: {tag}\n")
+        f.write(f"测试集: {test_dir} ({total} 张图片, {len(gt_ids)} 个身份)\n")
+        f.write(f"识别阈值: {threshold}\n\n")
+        f.write(f"Rank-1 准确率: {rank1_acc:.4f}\n")
+        f.write(f"Precision: {precision:.4f}\n")
+        f.write(f"Recall: {recall:.4f}\n")
+        f.write(f"F1-Score: {f1:.4f}\n")
+        f.write(f"TP={tp}, FP={fp}, FN={fn}\n")
+    print(f"汇总已保存: {summary_path}")
+
+
+def _get_top1_id(pipe, gt, results_log, all_similarities, gt_id):
+    """辅助函数，不实际使用，仅占位。"""
+    return gt_id
+
+
+def _plot_roc(all_similarities, out_dir, current_threshold):
+    """绘制 ROC 曲线，计算 AUC 和 EER。"""
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    sims = np.array([s for s, _ in all_similarities])
+    labels = np.array([1 if is_same else 0 for _, is_same in all_similarities])
+
+    if len(set(labels)) < 2:
+        print("  (正负样本不足，跳过 ROC 曲线)")
+        return
+
+    # 计算不同阈值下的 TAR 和 FAR
+    thresholds = np.linspace(0, 1, 500)
+    tars, fars = [], []
+    for t in thresholds:
+        preds = sims >= t
+        tp = np.sum(preds & (labels == 1))
+        fp = np.sum(preds & (labels == 0))
+        fn = np.sum(~preds & (labels == 1))
+        tn = np.sum(~preds & (labels == 0))
+        tar = tp / max(tp + fn, 1)
+        far = fp / max(fp + tn, 1)
+        tars.append(tar)
+        fars.append(far)
+
+    tars = np.array(tars)
+    fars = np.array(fars)
+    frrs = 1 - tars
+
+    # AUC
+    sorted_idx = np.argsort(fars)
+    auc = np.trapz(tars[sorted_idx], fars[sorted_idx])
+
+    # EER: FAR ≈ FRR
+    eer_idx = np.argmin(np.abs(fars - frrs))
+    eer = (fars[eer_idx] + frrs[eer_idx]) / 2
+    eer_threshold = thresholds[eer_idx]
+
+    # TAR@FAR=1e-3
+    far_target = 1e-3
+    tar_at_far = tars[np.argmin(np.abs(fars - far_target))]
+
+    print(f"\n  AUC:            {auc:.4f}")
+    print(f"  EER:            {eer:.4f} (阈值={eer_threshold:.3f})")
+    print(f"  TAR@FAR=0.001:  {tar_at_far:.4f}")
+
+    # 绘制 ROC
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # ROC 曲线
+    ax = axes[0]
+    ax.plot(fars, tars, "b-", linewidth=2, label=f"ROC (AUC={auc:.4f})")
+    ax.plot([0, 1], [0, 1], "k--", alpha=0.3)
+    ax.scatter([fars[eer_idx]], [tars[eer_idx]], c="red", s=80, zorder=5,
+               label=f"EER={eer:.4f} (t={eer_threshold:.3f})")
+    ax.set_xlabel("FAR (False Accept Rate)")
+    ax.set_ylabel("TAR (True Accept Rate)")
+    ax.set_title("ROC Curve")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # TAR/FAR vs Threshold
+    ax = axes[1]
+    ax.plot(thresholds, tars, "g-", linewidth=2, label="TAR")
+    ax.plot(thresholds, fars, "r-", linewidth=2, label="FAR")
+    ax.plot(thresholds, frrs, "b--", linewidth=1, label="FRR")
+    ax.axvline(x=current_threshold, color="orange", linestyle=":", linewidth=2,
+               label=f"当前阈值={current_threshold:.2f}")
+    ax.axvline(x=eer_threshold, color="red", linestyle=":", linewidth=1,
+               label=f"EER阈值={eer_threshold:.3f}")
+    ax.set_xlabel("Threshold")
+    ax.set_ylabel("Rate")
+    ax.set_title("TAR / FAR / FRR vs Threshold")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    roc_path = os.path.join(out_dir, "roc_curve.png")
+    fig.savefig(roc_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  ROC 曲线已保存: {roc_path}")
+
+
 # ---- CLI ----
 
 def _add_img_dir_args(parser, img_help="图片路径", dir_help="图片文件夹"):
@@ -585,6 +811,12 @@ def main():
     p_vis.add_argument("--perplexity", type=float, default=5, help="t-SNE perplexity")
     p_vis.add_argument("--output", default=None, help="输出图片路径")
 
+    # evaluate
+    p_eval = sub.add_parser("evaluate", help="评测识别性能 (测试目录: {identity}/xxx.jpg)")
+    p_eval.add_argument("--dir", required=True, help="测试图片目录 (子文件夹名=GT身份)")
+    p_eval.add_argument("--threshold", type=float, default=None, help="识别阈值")
+    p_eval.add_argument("--output-dir", default=None, help="评测报告保存目录")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -603,6 +835,7 @@ def main():
         "list": cmd_list,
         "remove": cmd_remove,
         "visualize": cmd_visualize,
+        "evaluate": cmd_evaluate,
     }
     commands[args.command](args, pipe, cfg)
 

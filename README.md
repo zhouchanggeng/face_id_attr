@@ -191,7 +191,47 @@ python main.py visualize --method umap
 
 输出散点图（不同身份不同颜色）和类内相似度统计（mean/min/max）。
 
-### 8. 人脸属性分析
+### 8. 识别性能评测
+
+对测试集进行 1:N 识别评测，输出多维度指标、每个身份的详细统计、ROC 曲线。
+
+测试目录结构（子目录名 = ground truth 身份）：
+```
+test_faces/
+├── alice/
+│   ├── alice_001.jpg
+│   └── alice_002.jpg
+└── bob/
+    └── bob_001.jpg
+```
+
+```bash
+# 使用默认阈值评测
+python main.py evaluate --dir test_faces
+
+# 指定阈值和输出目录
+python main.py evaluate --dir test_faces --threshold 0.5 --output-dir eval_results
+```
+
+输出：
+- 终端打印：Rank-1 准确率、Precision、Recall、F1、每个身份的详细统计
+- `evaluate_report.csv` — 每张图片的详细识别结果
+- `evaluate_summary.txt` — 汇总指标
+- `roc_curve.png` — ROC 曲线 + TAR/FAR/FRR vs Threshold 图
+
+评测指标说明：
+
+| 指标 | 含义 |
+|------|------|
+| Rank-1 准确率 | top-1 检索命中正确身份的比例（不考虑阈值） |
+| Precision | 识别结果中正确的比例（阈值以上） |
+| Recall | 库中身份被正确识别的比例 |
+| F1-Score | Precision 和 Recall 的调和平均 |
+| AUC | ROC 曲线下面积，越接近 1 越好 |
+| EER | FAR = FRR 时的错误率，越低越好 |
+| TAR@FAR=0.001 | FAR 为千分之一时的通过率 |
+
+### 9. 人脸属性分析
 
 ```bash
 python main.py analyze --img face.jpg --save
@@ -200,7 +240,7 @@ python main.py analyze --dir images/ --save
 
 > 注：属性分析需要实现 `FaceAnalyzer` 子类并在 `config.yaml` 中配置 `analyzer`。
 
-### 9. 数据库管理
+### 10. 数据库管理
 
 ```bash
 # 列出已注册身份
@@ -331,9 +371,12 @@ quality_assessor:
 ## Related Projects
 
 - [InsightFace](https://github.com/deepinsight/insightface) — 开源 2D/3D 人脸分析工具箱，涵盖检测、识别、对齐、属性分析，提供 ArcFace / RetinaFace 等经典模型
-- [SeetaFace](https://github.com/seetafaceengine/SeetaFaceTutorial) — 中科视拓开源人脸识别引擎，包含人脸检测、关键点定位、识别、活体检测等完整模块
 - [libfacedetection](https://github.com/ShiqiYu/libfacedetection) — 于仕琪教授开源的轻量级 CNN 人脸检测库，支持 5 点关键点，适合嵌入式部署
 - [MNN_FaceTrack](https://github.com/qaz734913414/MNN_FaceTrack) — 基于阿里 MNN 推理框架的实时人脸追踪方案，集成检测 + 关键点 + 追踪
+- [SeetaFace6Open](https://github.com/SeetaFace6Open/index) — 中科视拓开源人脸识别引擎，包含人脸检测、关键点定位、识别、活体检测等完整模块
+- [SeetaFaceTutorial](https://github.com/seetafaceengine/SeetaFaceTutorial) — 中科视拓开源人脸识别引擎说明文档
+- [FaceMind](https://github.com/Justin-ljw/FaceMind) - 基于OpenCV + RetinaFace + ArcFace的深度学习实时人脸识别系统
+- [arcface-pytorch](https://github.com/bubbliiiing/arcface-pytorch) - Arcface：人脸识别模型在Pytorch当中的实现
 
 ## License
 
