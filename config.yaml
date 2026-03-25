@@ -11,7 +11,7 @@
 #     imgsz: 640
 #     device: "cuda:0"
 
-可选检测器: YOLO ONNX（不依赖 PyTorch，适合部署）
+# 可选检测器: YOLO ONNX（不依赖 PyTorch，适合部署）
 detector:
   class: "module.face_detection.yolo_detector.YOLOFaceDetector"
   params:
@@ -81,6 +81,33 @@ max_image_size: 1920
 
 # 1:N 识别阈值
 identify_threshold: 0.6
+
+# ---- 人脸跟踪（视频模式） ----
+# 可选: iou / sort / byte
+tracker:
+  type: "sort"
+  params:
+    iou_threshold: 0.3
+    max_missed_sec: 0.5       # 连续未匹配秒数上限（自动乘以 fps 转为帧数）
+    recognize_interval_sec: 1.0  # 重新识别间隔（秒）
+
+# 可选跟踪器: IoU 贪心匹配（最轻量，适合简单场景）
+# tracker:
+#   type: "iou"
+#   params:
+#     iou_threshold: 0.3
+#     max_missed_sec: 0.5
+#     recognize_interval_sec: 1.0
+
+# 可选跟踪器: ByteTrack 两阶段关联（适合多人密集、频繁遮挡）
+# tracker:
+#   type: "byte"
+#   params:
+#     iou_threshold: 0.3
+#     high_threshold: 0.5
+#     low_threshold: 0.1
+#     max_missed_sec: 0.5
+#     recognize_interval_sec: 1.0
 
 # 文件夹路径默认值
 known_faces_dir: "known_faces"

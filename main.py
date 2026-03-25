@@ -583,19 +583,28 @@ def cmd_video(args, pipe, cfg):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(out_video, fourcc, fps, (w, h))
 
-    tracker_cls = TRACKERS.get(args.tracker, IoUTracker)
+    # 跟踪器配置: CLI 参数 > config.yaml > 默认值
+    tracker_cfg = cfg.get("tracker") or {}
+    tracker_params = tracker_cfg.get("params") or {}
+
+    tracker_type = args.tracker or tracker_cfg.get("type", "sort")
+    iou_thresh = args.iou_threshold if args.iou_threshold != 0.3 else tracker_params.get("iou_threshold", 0.3)
+    max_missed_sec = tracker_params.get("max_missed_sec", 0.5)
+    recog_interval_sec = args.recog_interval if args.recog_interval != 1.0 else tracker_params.get("recognize_interval_sec", 1.0)
+
+    tracker_cls = TRACKERS.get(tracker_type, SORTTracker)
     tracker_kwargs = {
-        "iou_threshold": args.iou_threshold,
-        "max_missed": int(fps * 0.5),
-        "recognize_interval": int(fps * args.recog_interval),
+        "iou_threshold": iou_thresh,
+        "max_missed": int(fps * max_missed_sec),
+        "recognize_interval": int(fps * recog_interval_sec),
     }
-    if args.tracker == "byte":
-        tracker_kwargs["high_threshold"] = 0.5
-        tracker_kwargs["low_threshold"] = 0.1
+    if tracker_type == "byte":
+        tracker_kwargs["high_threshold"] = tracker_params.get("high_threshold", 0.5)
+        tracker_kwargs["low_threshold"] = tracker_params.get("low_threshold", 0.1)
     tracker = tracker_cls(**tracker_kwargs)
 
     print(f"视频: {video_path} ({w}x{h}, {fps:.1f}fps, {total_frames} 帧)")
-    print(f"识别阈值: {threshold}, 识别间隔: {args.recog_interval}s")
+    print(f"跟踪器: {tracker_type}, 识别阈值: {threshold}, 识别间隔: {recog_interval_sec}s")
     print(f"输出: {out_video}\n")
 
     frame_idx = 0
@@ -1011,11 +1020,11 @@ def main():
     # video
     p_vid = sub.add_parser("video", help="视频人脸识别 (检测+跟踪+识别)")
     p_vid.add_argument("--input", required=True, help="输入视频路径")
-    p_vid.add_argument("--tracker", default="sort", choices=["iou", "sort", "byte"],
-                       help="跟踪算法: iou(贪心IoU), sort(Kalman+匈牙利), byte(ByteTrack两阶段)")
+    p_vid.add_argument("--tracker", default=None, choices=["iou", "sort", "byte"],
+                       help="跟踪算法 (默认读取 config.yaml)")
     p_vid.add_argument("--threshold", type=float, default=None, help="识别阈值")
     p_vid.add_argument("--iou-threshold", type=float, default=0.3, help="跟踪 IoU 阈值")
-    p_vid.add_argument("--recog-interval", type=float, default=1.0, help="重新识别间隔 (秒，默认1.0)")
+    p_vid.add_argument("--recog-interval", type=float, default=1.0, help="重新识别间隔 (秒)")
     p_vid.add_argument("--output-dir", default=None, help="输出目录")
 
     args = parser.parse_args()
