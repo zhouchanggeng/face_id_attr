@@ -554,6 +554,10 @@ def cmd_visualize(args, pipe, cfg):
 def cmd_video(args, pipe, cfg):
     """视频人脸识别：检测 + 跟踪 + 识别，输出标注视频。"""
     from module.face_tracking.iou_tracker import IoUTracker
+    from module.face_tracking.sort_tracker import SORTTracker
+    from module.face_tracking.byte_tracker import ByteTracker
+
+    TRACKERS = {"iou": IoUTracker, "sort": SORTTracker, "byte": ByteTracker}
 
     pipe._require_db()
     video_path = args.input
@@ -579,11 +583,16 @@ def cmd_video(args, pipe, cfg):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(out_video, fourcc, fps, (w, h))
 
-    tracker = IoUTracker(
-        iou_threshold=args.iou_threshold,
-        max_missed=int(fps * 0.5),  # 0.5 秒未匹配则删除
-        recognize_interval=int(fps * args.recog_interval),
-    )
+    tracker_cls = TRACKERS.get(args.tracker, IoUTracker)
+    tracker_kwargs = {
+        "iou_threshold": args.iou_threshold,
+        "max_missed": int(fps * 0.5),
+        "recognize_interval": int(fps * args.recog_interval),
+    }
+    if args.tracker == "byte":
+        tracker_kwargs["high_threshold"] = 0.5
+        tracker_kwargs["low_threshold"] = 0.1
+    tracker = tracker_cls(**tracker_kwargs)
 
     print(f"视频: {video_path} ({w}x{h}, {fps:.1f}fps, {total_frames} 帧)")
     print(f"识别阈值: {threshold}, 识别间隔: {args.recog_interval}s")
@@ -1002,6 +1011,8 @@ def main():
     # video
     p_vid = sub.add_parser("video", help="视频人脸识别 (检测+跟踪+识别)")
     p_vid.add_argument("--input", required=True, help="输入视频路径")
+    p_vid.add_argument("--tracker", default="sort", choices=["iou", "sort", "byte"],
+                       help="跟踪算法: iou(贪心IoU), sort(Kalman+匈牙利), byte(ByteTrack两阶段)")
     p_vid.add_argument("--threshold", type=float, default=None, help="识别阈值")
     p_vid.add_argument("--iou-threshold", type=float, default=0.3, help="跟踪 IoU 阈值")
     p_vid.add_argument("--recog-interval", type=float, default=1.0, help="重新识别间隔 (秒，默认1.0)")
