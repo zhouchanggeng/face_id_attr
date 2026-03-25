@@ -11,6 +11,15 @@ detector:
     imgsz: 640
     device: "cuda:0"
 
+# 可选检测器: YOLO ONNX（不依赖 PyTorch，适合部署）
+# detector:
+#   class: "module.face_detection.yolo_detector.YOLOFaceDetector"
+#   params:
+#     model_path: "models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx"
+#     conf_threshold: 0.5
+#     iou_threshold: 0.45
+#     imgsz: 640
+
 # 可选检测器: YuNet（轻量级，带 5 点 landmarks，配合 SFace alignCrop 效果好）
 # detector:
 #   class: "module.face_detection.yunet_detector.YuNetDetector"

@@ -7,7 +7,7 @@ class YOLOFaceDetector(FaceDetector):
     """基于 Ultralytics YOLO 的人脸检测器。
 
     支持 YOLOv8/v11/v12/v26 等所有 ultralytics 兼容的检测模型。
-    模型权重文件为 .pt 格式（训练产出的 best.pt / last.pt）。
+    支持 .pt 和 .onnx 格式的模型权重。
     """
 
     def __init__(
@@ -21,7 +21,11 @@ class YOLOFaceDetector(FaceDetector):
     ):
         from ultralytics import YOLO
 
-        self.model = YOLO(model_path)
+        # ONNX 模型需要显式指定 task
+        if model_path.endswith(".onnx"):
+            self.model = YOLO(model_path, task="detect")
+        else:
+            self.model = YOLO(model_path)
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
         self.imgsz = imgsz

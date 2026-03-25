@@ -72,12 +72,15 @@ pip install -r requirements.txt
 
 模型文件较大，不包含在仓库中，需自行下载放置到 `models/` 目录：
 
-| 模型 | 用途 | 路径 |
-|------|------|------|
-| YOLO WiderFace | 人脸检测 | `models/yolo26m_wider_face/weights/best.pt` |
-| YuNet | 人脸检测 (轻量) | `models/yunet/face_detection_yunet_2023mar.onnx` |
-| SFace | 人脸识别 (128维) | `models/sface/face_recognition_sface_2021dec.onnx` |
-| PFLD_GhostOne | 98点关键点 | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
+| 模型 | 用途 | 格式 | 路径 |
+|------|------|------|------|
+| YOLO WiderFace | 人脸检测 | PyTorch | `models/yolo26m_wider_face/weights/best.pt` |
+| YOLO WiderFace | 人脸检测 | ONNX | `models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx` |
+| YuNet | 人脸检测 (轻量) | ONNX | `models/yunet/face_detection_yunet_2023mar.onnx` |
+| SFace | 人脸识别 (128维) | ONNX | `models/sface/face_recognition_sface_2021dec.onnx` |
+| PFLD_GhostOne | 98点关键点 | ONNX | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
+
+> YOLO 检测器同时支持 `.pt` 和 `.onnx` 格式，ONNX 格式不依赖 PyTorch，适合部署场景。
 | WebFace | 人脸识别 | `models/webface/webface_r50.onnx` |
 
 ## 使用方法
@@ -226,7 +229,8 @@ analyzer: null
 
 | 检测器 | 识别器 | 校正器 | 说明 |
 |--------|--------|--------|------|
-| YOLO + PFLD | SFace | PFLDAligner | 默认配置，精度高 |
+| YOLO (.pt) + PFLD | SFace | PFLDAligner | 默认配置，精度高 |
+| YOLO (.onnx) + PFLD | SFace | PFLDAligner | 不依赖 PyTorch，适合部署 |
 | YuNet | SFace | SFace alignCrop | 轻量级，纯 OpenCV |
 | OpenCV Haar | Histogram | SimpleAligner | 零依赖演示 |
 

@@ -40,9 +40,10 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 def _iter_images(directory: str):
-    for name in sorted(os.listdir(directory)):
-        if os.path.splitext(name)[1].lower() in IMAGE_EXTS:
-            yield os.path.join(directory, name)
+    for root, _dirs, files in os.walk(directory):
+        for name in sorted(files):
+            if os.path.splitext(name)[1].lower() in IMAGE_EXTS:
+                yield os.path.join(root, name)
 
 
 def _save_db(pipe, cfg):
@@ -52,9 +53,14 @@ def _save_db(pipe, cfg):
         print(f"数据库已保存: {db_path}")
 
  
-def _output_path(img_path, output_dir=None):
-    """生成结果图片保存路径。"""
+def _output_path(img_path, output_dir=None, input_dir=None):
+    """生成结果图片保存路径，保留相对子目录结构。"""
     out_dir = output_dir or "results"
+    if input_dir:
+        rel = os.path.relpath(img_path, input_dir)
+        sub_dir = os.path.dirname(rel)
+        if sub_dir:
+            out_dir = os.path.join(out_dir, sub_dir)
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.basename(img_path)
     name, ext = os.path.splitext(base)
@@ -128,7 +134,7 @@ def cmd_identify_dir(args, pipe, cfg):
             print(f"[跳过] 无法读取: {img_path}")
             continue
         results = pipe.identify(img, threshold=threshold, top_k=args.top_k)
-        filename = os.path.basename(img_path)
+        filename = os.path.relpath(img_path, images_dir)
         if not results:
             print(f"{filename}: 未检测到人脸")
             continue
@@ -138,7 +144,7 @@ def cmd_identify_dir(args, pipe, cfg):
             else:
                 print(f"{filename}: 未识别 (最高相似度: {r['similarity']:.4f})")
         if args.save:
-            out = _output_path(img_path, args.output_dir)
+            out = _output_path(img_path, args.output_dir, images_dir)
             pipe.draw_results(img, results, out)
             print(f"  -> 保存: {out}")
 
@@ -178,10 +184,10 @@ def cmd_detect_dir(args, pipe, cfg):
             print(f"[跳过] 无法读取: {img_path}")
             continue
         faces = pipe.detect(img)
-        filename = os.path.basename(img_path)
+        filename = os.path.relpath(img_path, images_dir)
         print(f"{filename}: 检测到 {len(faces)} 张人脸")
         if args.save:
-            out = _output_path(img_path, args.output_dir)
+            out = _output_path(img_path, args.output_dir, images_dir)
             pipe.draw_results(img, faces, out)
             print(f"  -> 保存: {out}")
 
@@ -246,10 +252,10 @@ def cmd_align_dir(args, pipe, cfg):
             print(f"[跳过] 无法读取: {img_path}")
             continue
         results = pipe.align_faces(img)
-        filename = os.path.basename(img_path)
+        filename = os.path.relpath(img_path, images_dir)
         print(f"{filename}: 检测到 {len(results)} 张人脸")
         if args.save:
-            out = _output_path(img_path, out_dir)
+            out = _output_path(img_path, out_dir, images_dir)
             _draw_align_results(img, results, out, align_dir)
             print(f"  -> 保存: {out}")
 
@@ -288,7 +294,7 @@ def cmd_analyze_dir(args, pipe, cfg):
             print(f"[跳过] 无法读取: {img_path}")
             continue
         results = pipe.analyze_faces(img)
-        filename = os.path.basename(img_path)
+        filename = os.path.relpath(img_path, images_dir)
         if not results:
             print(f"{filename}: 未检测到人脸")
             continue
@@ -305,7 +311,7 @@ def cmd_analyze_dir(args, pipe, cfg):
                 parts.append(f"种族:{attr['dominant_race']}")
             print(f"{filename}: {', '.join(parts)}")
         if args.save:
-            out = _output_path(img_path, args.output_dir)
+            out = _output_path(img_path, args.output_dir, images_dir)
             pipe.draw_results(img, results, out)
             print(f"  -> 保存: {out}")
 
