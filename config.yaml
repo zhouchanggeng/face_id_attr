@@ -41,6 +41,18 @@ recognizer:
   params:
     model_path: "models/sface/face_recognition_sface_2021dec.onnx"
 
+# 可选识别器: ArcFace (512维特征，精度更高)
+# recognizer:
+#   class: "module.face_recognition.arcface_recognizer.ArcFaceRecognizer"
+#   params:
+#     model_path: "models/arcface/glint360k_r50.onnx"
+
+# 可选识别器: ArcFace WebFace
+# recognizer:
+#   class: "module.face_recognition.arcface_recognizer.ArcFaceRecognizer"
+#   params:
+#     model_path: "models/arcface/webface_r50.onnx"
+
 # 人脸向量数据库（可替换为 FAISS/Milvus 等实现）
 database:
   class: "module.face_database.numpy_db.NumpyFaceDatabase"
