@@ -2,6 +2,17 @@
 
 一个基于 Python 的模块化人脸识别系统，支持人脸检测、关键点校正、特征提取、1:1 比对、1:N 身份识别和人脸属性分析。所有模块均可通过 YAML 配置文件灵活切换，无需修改代码。
 
+## Recent Updates
+
+- **2026.03.25** — 新增人脸质量评估模块（FQA），集成达摩院质量评分模型，支持 `quality` 命令和 CSV 报告
+- **2026.03.25** — 新增 `align` 命令，可视化 5 关键点并保存对齐后的人脸图像
+- **2026.03.25** — 新增 `visualize` 命令，支持 t-SNE / PCA / UMAP 特征分布可视化
+- **2026.03.25** — 注册去重：基于特征余弦相似度自动跳过重复人脸
+- **2026.03.25** — YOLO 检测器支持 ONNX 模型格式，适合部署场景
+- **2026.03.24** — 集成 PFLD_GhostOne 98 点关键点模型用于人脸校正
+- **2026.03.24** — 移除 DeepFace 依赖，全部改用轻量级 ONNX / OpenCV 方案
+- **2026.03.24** — 合并 CLI 命令，统一使用 `--img` / `--dir` 区分单张和批量操作
+
 ## 特性
 
 - **模块化架构**：检测、校正、识别、数据库、属性分析五大模块，各自独立，通过抽象基类约束接口
@@ -304,6 +315,18 @@ quality_assessor:
 - [ ] FAISS / Milvus 向量数据库 — 大规模人脸库高效检索
 - [ ] REST API 服务 — FastAPI 封装，支持 HTTP 接口调用
 - [ ] 模型量化与边缘部署 — INT8 量化、TensorRT 加速、ONNX Runtime 优化
+
+## References
+
+| 模块 | 方法/模型 | 来源 |
+|------|-----------|------|
+| 人脸检测 | YOLOv26m WiderFace | [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) |
+| 人脸检测 | YuNet | [OpenCV Zoo - YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) |
+| 关键点校正 | PFLD_GhostOne (98点) | [PFLD_GhostOne](https://github.com/AnthonyF333/PFLD_GhostOne) |
+| 人脸识别 | SFace | [OpenCV Zoo - SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) |
+| 人脸质量评估 | FQA | [ModelScope - FQA](https://www.modelscope.cn/models/iic/cv_manual_face-quality-assessment_fqa) |
+| 人脸检测数据集 | WiderFace | [WiderFace](http://shuoyang1213.me/WIDERFACE/) |
+| 关键点数据集 | WFLW (98点) | [WFLW](https://wywu.github.io/projects/LAB/WFLW.html) |
 
 ## License
 
