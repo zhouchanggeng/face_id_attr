@@ -619,10 +619,12 @@ def cmd_video(args, pipe, cfg):
         # 跟踪
         tracks = tracker.update(detections)
 
-        # 每帧都对活跃 track 做识别，取历史最高相似度
+        # 识别：仅对需要识别的 track 做推理（首次 + 定期刷新）
         for track in tracks:
             if track.missed > 0:
-                continue  # 当前帧未匹配到检测，跳过
+                continue
+            if not tracker.needs_recognition(track):
+                continue
             face_dict = {"bbox": track.bbox, "landmarks": None}
             if scale < 1.0:
                 ox1, oy1, ox2, oy2 = track.bbox
@@ -634,7 +636,7 @@ def cmd_video(args, pipe, cfg):
             hits = pipe.database.search(feat, top_k=1)
             if hits:
                 pred_id, sim = hits[0]
-                # 保留历史最高相似度的身份
+                # 保留历史最高相似度（质量好的帧自然分高）
                 if sim > track.similarity:
                     track.similarity = sim
                     if sim >= threshold:
@@ -1002,7 +1004,7 @@ def main():
     p_vid.add_argument("--input", required=True, help="输入视频路径")
     p_vid.add_argument("--threshold", type=float, default=None, help="识别阈值")
     p_vid.add_argument("--iou-threshold", type=float, default=0.3, help="跟踪 IoU 阈值")
-    p_vid.add_argument("--recog-interval", type=float, default=2.0, help="重新识别间隔 (秒)")
+    p_vid.add_argument("--recog-interval", type=float, default=1.0, help="重新识别间隔 (秒，默认1.0)")
     p_vid.add_argument("--output-dir", default=None, help="输出目录")
 
     args = parser.parse_args()
