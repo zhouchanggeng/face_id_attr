@@ -92,6 +92,33 @@ def _default_output_dir(input_dir, cfg, task=""):
     return name
 
 
+def _nms_detections(detections, nms_threshold=0.4):
+    """对检测结果做 NMS 去重，按 confidence 降序保留。"""
+    if len(detections) <= 1:
+        return detections
+    boxes = [d["bbox"] for d in detections]
+    confs = [d["confidence"] for d in detections]
+    indices = sorted(range(len(confs)), key=lambda i: confs[i], reverse=True)
+    keep = []
+    while indices:
+        i = indices.pop(0)
+        keep.append(i)
+        remaining = []
+        for j in indices:
+            bx1 = max(boxes[i][0], boxes[j][0])
+            by1 = max(boxes[i][1], boxes[j][1])
+            bx2 = min(boxes[i][2], boxes[j][2])
+            by2 = min(boxes[i][3], boxes[j][3])
+            inter = max(0, bx2 - bx1) * max(0, by2 - by1)
+            area_i = (boxes[i][2] - boxes[i][0]) * (boxes[i][3] - boxes[i][1])
+            area_j = (boxes[j][2] - boxes[j][0]) * (boxes[j][3] - boxes[j][1])
+            iou = inter / max(area_i + area_j - inter, 1e-6)
+            if iou < nms_threshold:
+                remaining.append(j)
+        indices = remaining
+    return [detections[i] for i in keep]
+
+
 def _output_path(img_path, output_dir=None, input_dir=None):
     """生成结果图片保存路径，保留相对子目录结构。"""
     out_dir = output_dir or "results"
@@ -570,34 +597,49 @@ def cmd_video(args, pipe, cfg):
         if not ret:
             break
 
-        # 检测
+        # 检测（在缩放图上）
         resized, scale = pipe._limit_size(frame, pipe.max_image_size)
-        detections = pipe.detector.detect(resized)
-        if scale < 1.0:
-            inv = 1.0 / scale
-            for d in detections:
-                x1, y1, x2, y2 = d["bbox"]
+        raw_dets = pipe.detector.detect(resized)
+
+        # NMS 去重（防止重叠框）
+        raw_dets = _nms_detections(raw_dets, nms_threshold=0.4)
+
+        # 映射回原图坐标用于跟踪和绘制
+        detections = []
+        for d in raw_dets:
+            x1, y1, x2, y2 = d["bbox"]
+            if scale < 1.0:
+                inv = 1.0 / scale
                 d["bbox"] = (int(x1 * inv), int(y1 * inv),
                              int(x2 * inv), int(y2 * inv))
+            # 保留缩放图上的原始 bbox 用于对齐
+            d["_resized_bbox"] = (x1, y1, x2, y2)
+            detections.append(d)
 
         # 跟踪
         tracks = tracker.update(detections)
 
-        # 识别需要识别的 track
+        # 每帧都对活跃 track 做识别，取历史最高相似度
         for track in tracks:
-            if tracker.needs_recognition(track):
-                x1, y1, x2, y2 = track.bbox
-                face_img = pipe._get_face_image(frame, {"bbox": track.bbox, "landmarks": None})
-                feat = pipe.recognizer.extract(face_img)
-                track.feature = feat
-                hits = pipe.database.search(feat, top_k=1)
-                if hits and hits[0][1] >= threshold:
-                    track.identity = hits[0][0]
-                    track.similarity = hits[0][1]
-                else:
-                    track.identity = None
-                    track.similarity = hits[0][1] if hits else 0.0
-                track.recognized = True
+            if track.missed > 0:
+                continue  # 当前帧未匹配到检测，跳过
+            face_dict = {"bbox": track.bbox, "landmarks": None}
+            if scale < 1.0:
+                ox1, oy1, ox2, oy2 = track.bbox
+                face_dict["bbox"] = (int(ox1 * scale), int(oy1 * scale),
+                                     int(ox2 * scale), int(oy2 * scale))
+            face_img = pipe._get_face_image(resized, face_dict)
+            feat = pipe.recognizer.extract(face_img)
+            track.feature = feat
+            hits = pipe.database.search(feat, top_k=1)
+            if hits:
+                pred_id, sim = hits[0]
+                # 保留历史最高相似度的身份
+                if sim > track.similarity:
+                    track.similarity = sim
+                    if sim >= threshold:
+                        track.identity = pred_id
+            track.recognized = True
 
         # 绘制
         vis = frame.copy()
