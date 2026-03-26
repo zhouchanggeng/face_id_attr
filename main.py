@@ -649,36 +649,47 @@ def cmd_video(args, pipe, cfg):
         for track in tracks:
             if track.missed > 0:
                 continue
-            if not tracker.needs_recognition(track):
-                continue
+            # 获取对齐后的人脸图像
             face_dict = {"bbox": track.bbox, "landmarks": None}
             if scale < 1.0:
                 ox1, oy1, ox2, oy2 = track.bbox
                 face_dict["bbox"] = (int(ox1 * scale), int(oy1 * scale),
                                      int(ox2 * scale), int(oy2 * scale))
             face_img = pipe._get_face_image(resized, face_dict)
-            feat = pipe.recognizer.extract(face_img)
-            track.feature = feat
-            hits = pipe.database.search(feat, top_k=1)
-            if hits:
-                pred_id, sim = hits[0]
-                # 保留历史最高相似度（质量好的帧自然分高）
-                if sim > track.similarity:
-                    track.similarity = sim
-                    if sim >= threshold:
-                        track.identity = pred_id
-            track.recognized = True
+
+            # 身份识别（按间隔）
+            if tracker.needs_recognition(track):
+                feat = pipe.recognizer.extract(face_img)
+                track.feature = feat
+                hits = pipe.database.search(feat, top_k=1)
+                if hits:
+                    pred_id, sim = hits[0]
+                    if sim > track.similarity:
+                        track.similarity = sim
+                        if sim >= threshold:
+                            track.identity = pred_id
+                track.recognized = True
+
+            # 表情识别（每帧，因为表情变化快）
+            if pipe.analyzer is not None and hasattr(pipe.analyzer, "classify"):
+                emo = pipe.analyzer.classify(face_img)
+                track._emotion = emo.get("dominant_emotion", "")
+            else:
+                track._emotion = getattr(track, "_emotion", "")
 
         # 绘制
         vis = frame.copy()
         for track in tracks:
             x1, y1, x2, y2 = track.bbox
+            emotion = getattr(track, "_emotion", "")
             if track.identity:
                 color = (0, 255, 0)
                 label = f"#{track.track_id} {track.identity} {track.similarity:.2f}"
             else:
                 color = (0, 0, 255)
                 label = f"#{track.track_id} unknown"
+            if emotion:
+                label += f" [{emotion}]"
             cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
             (tw, th_), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             cv2.rectangle(vis, (x1, y1 - th_ - 6), (x1 + tw + 4, y1), (255, 255, 255), -1)
