@@ -2,7 +2,10 @@
 import importlib
 import yaml
 
-from .pipeline import FaceRecogPipeline
+try:
+    from .pipeline import FaceRecogPipeline
+except ImportError:
+    from pipeline import FaceRecogPipeline
 
 
 def _create_instance(cfg: dict):
