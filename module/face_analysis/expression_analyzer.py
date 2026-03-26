@@ -1,35 +1,58 @@
 import cv2
 import numpy as np
 import onnxruntime
-from typing import List
+from typing import List, Optional
 from .base import FaceAnalyzer
 
 
+# 预定义类别映射
+PRESETS = {
+    "rafdb_7": ["Surprise", "Fear", "Disgust", "Happiness", "Sadness", "Anger", "Neutral"],
+    "ferplus_8": ["Neutral", "Happiness", "Surprise", "Sadness", "Anger", "Disgust", "Fear", "Contempt"],
+    "affectnet_7": ["Neutral", "Happiness", "Sadness", "Surprise", "Fear", "Disgust", "Anger"],
+    "affectnet_8": ["Neutral", "Happiness", "Sadness", "Surprise", "Fear", "Disgust", "Anger", "Contempt"],
+    "smile_2": ["No_Smile", "Smile"],
+}
+
+
 class ExpressionAnalyzer(FaceAnalyzer):
-    """基于 YOLO 分类模型的人脸表情识别（RAF-DB 7类）。
+    """通用人脸表情/属性分类器（ONNX 分类模型）。
 
-    输入: 对齐后的人脸图像（由 pipeline 在对齐后传入）
-    输出: 7 类表情概率 + 主要表情
+    通过 class_names 参数配置类别，支持任意分类任务:
+        - 7 类表情 (RAF-DB / AffectNet)
+        - 8 类表情 (FER+ / AffectNet-8)
+        - 2 类微笑检测
+        - 自定义类别列表
 
-    RAF-DB 7 类表情 (文件夹 1-7，按名称排序后索引 0-6):
-        0 -> 1 -> Surprise
-        1 -> 2 -> Fear
-        2 -> 3 -> Disgust
-        3 -> 4 -> Happiness
-        4 -> 5 -> Sadness
-        5 -> 6 -> Anger
-        6 -> 7 -> Neutral
+    Args:
+        model_path: ONNX 分类模型路径
+        input_size: 模型输入尺寸 (默认 224)
+        class_names: 类别名称列表，或预设名称 (rafdb_7/ferplus_8/affectnet_7/smile_2 等)
+        threshold: 置信度阈值，低于此值输出 "Unknown" (默认 0，不过滤)
     """
 
-    EMOTIONS = ["Surprise", "Fear", "Disgust", "Happiness", "Sadness", "Anger", "Neutral"]
-
-    def __init__(self, model_path: str, input_size: int = 224):
+    def __init__(self, model_path: str, input_size: int = 224,
+                 class_names: Optional[list] = None, threshold: float = 0.0):
         self.input_size = input_size
+        self.threshold = threshold
         self.session = onnxruntime.InferenceSession(
             model_path,
             providers=onnxruntime.get_available_providers(),
         )
         self.input_name = self.session.get_inputs()[0].name
+
+        # 解析类别名称
+        if class_names is None:
+            # 从模型输出维度自动推断
+            out_shape = self.session.get_outputs()[0].shape
+            num_classes = out_shape[-1] if out_shape[-1] is not None else 7
+            self.class_names = [f"class_{i}" for i in range(num_classes)]
+        elif isinstance(class_names, str) and class_names in PRESETS:
+            self.class_names = PRESETS[class_names]
+        elif isinstance(class_names, list):
+            self.class_names = class_names
+        else:
+            raise ValueError(f"class_names 不支持: {class_names}，可选预设: {list(PRESETS.keys())}")
 
     def _preprocess(self, face_image: np.ndarray) -> np.ndarray:
         """预处理: resize -> RGB -> normalize [0,1] -> CHW -> NCHW。"""
@@ -40,11 +63,7 @@ class ExpressionAnalyzer(FaceAnalyzer):
         return np.expand_dims(img, axis=0)
 
     def analyze(self, image: np.ndarray, faces: List[dict]) -> List[dict]:
-        """对每张检测到的人脸进行表情分析。
-
-        注意: 此方法接收原图 + 检测框列表，内部裁剪人脸后分析。
-        如果 pipeline 已提供对齐后的人脸，可直接调用 classify()。
-        """
+        """对每张检测到的人脸进行分类分析。"""
         results = []
         for face in faces:
             x1, y1, x2, y2 = face["bbox"]
@@ -52,17 +71,18 @@ class ExpressionAnalyzer(FaceAnalyzer):
             if crop.size == 0:
                 results.append({})
                 continue
-            result = self.classify(crop)
-            results.append(result)
+            results.append(self.classify(crop))
         return results
 
     def classify(self, face_image: np.ndarray) -> dict:
-        """对单张人脸图像进行表情分类。
+        """对单张人脸图像进行分类。
 
-        Args:
-            face_image: BGR 人脸图像（对齐后的 112x112 或任意尺寸）
         Returns:
-            {"dominant_emotion": str, "emotion": {name: prob, ...}}
+            {
+                "dominant_emotion": str,       # 主要类别
+                "emotion": {name: prob, ...},  # 各类别概率
+                "confidence": float,           # 主要类别的置信度
+            }
         """
         blob = self._preprocess(face_image)
         outputs = self.session.run(None, {self.input_name: blob})
@@ -72,10 +92,17 @@ class ExpressionAnalyzer(FaceAnalyzer):
         exp_logits = np.exp(logits - np.max(logits))
         probs = exp_logits / exp_logits.sum()
 
-        emotion_dict = {name: float(prob) for name, prob in zip(self.EMOTIONS, probs)}
-        dominant = self.EMOTIONS[int(np.argmax(probs))]
+        top_idx = int(np.argmax(probs))
+        top_conf = float(probs[top_idx])
+        dominant = self.class_names[top_idx] if top_conf >= self.threshold else "Unknown"
+
+        emotion_dict = {}
+        for i, name in enumerate(self.class_names):
+            if i < len(probs):
+                emotion_dict[name] = float(probs[i])
 
         return {
             "dominant_emotion": dominant,
             "emotion": emotion_dict,
+            "confidence": top_conf,
         }
