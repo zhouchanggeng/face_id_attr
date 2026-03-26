@@ -18,8 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 yolo = ["ultralytics>=8.3"]
+mediapipe = ["mediapipe>=0.10"]
 viz = ["scikit-learn", "matplotlib"]
-all = ["ultralytics>=8.3", "scikit-learn", "matplotlib"]
+all = ["ultralytics>=8.3", "mediapipe>=0.10", "scikit-learn", "matplotlib"]
 
 [project.scripts]
 face-id-attr = "face_id_attr.main:main"

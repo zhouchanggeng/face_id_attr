@@ -35,6 +35,13 @@ aligner:
     input_size: 112
     output_size: [112, 112]
 
+# 可选校正器: MediaPipe 478 点关键点（精度更高，需要 mediapipe 库）
+# aligner:
+#   class: "module.face_alignment.mediapipe_aligner.MediaPipeAligner"
+#   params:
+#     model_path: "models/face_landmarker.task"
+#     output_size: [112, 112]
+
 # 人脸识别 - 使用 ArcFace (512维特征)
 recognizer:
   class: "module.face_recognition.arcface_recognizer.ArcFaceRecognizer"

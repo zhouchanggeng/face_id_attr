@@ -5,6 +5,7 @@
 | 类名 | 算法 | 关键点数 | 依赖 |
 |------|------|----------|------|
 | `PFLDAligner` | PFLD_GhostOne 98 点关键点 | 98 → 5 | onnxruntime |
+| `MediaPipeAligner` | MediaPipe FaceLandmarker 478 点 | 478 → 5 | mediapipe |
 | `SimpleAligner` | 5 点仿射变换 | 5 | opencv-python |
 
 ## 模型信息
@@ -45,6 +46,33 @@ REF_POINTS_112 = [
 - 无需额外模型
 - 需要检测器提供至少 5 个 landmarks
 - 无 landmarks 时 fallback 为直接裁剪 + resize
+
+### MediaPipeAligner
+- 模型格式：`.task`（MediaPipe 专用格式）
+- 默认模型：`models/face_landmarker.task`
+- 模型来源：[MediaPipe FaceLandmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
+- 关键点数：478 个 3D 关键点（含虹膜追踪）
+- 依赖：`pip install mediapipe>=0.10`
+
+从 478 点中提取 5 个关键点用于仿射对齐：
+
+| 关键点 | MediaPipe 索引 | 说明 |
+|--------|---------------|------|
+| 左眼中心 | 468 | 左眼虹膜中心 |
+| 右眼中心 | 473 | 右眼虹膜中心 |
+| 鼻尖 | 1 | 鼻尖 |
+| 左嘴角 | 61 | 左嘴角 |
+| 右嘴角 | 291 | 右嘴角 |
+
+额外提供 `predict_478pts(image, face) -> np.ndarray` 方法，返回完整 478 点。
+
+### 三种校正器对比
+
+| 校正器 | 关键点数 | 精度 | 速度 | 额外依赖 |
+|--------|----------|------|------|----------|
+| PFLDAligner | 98 | 中 | 快 | onnxruntime |
+| MediaPipeAligner | 478 | 高 | 中 | mediapipe |
+| SimpleAligner | 5 (需检测器提供) | 低 | 最快 | 无 |
 
 ## 接口规范
 

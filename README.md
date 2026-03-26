@@ -97,6 +97,8 @@ pip install -r requirements.txt
 | SFace | 人脸识别 (128维) | ONNX | `models/sface/face_recognition_sface_2021dec.onnx` |
 | PFLD_GhostOne | 98点关键点 | ONNX | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
 | FQA | 人脸质量评估 | ONNX | `models/fqa_model.onnx` |
+| FaceLandmarker | 478点关键点 (MediaPipe) | .task | `models/face_landmarker.task` |
+| YOLO26s-cls | 表情识别 (RAF-DB 7类) | ONNX | `models/expression/yolo26s_cls_rafdb.onnx` |
 
 > YOLO 检测器同时支持 `.pt` 和 `.onnx` 格式，ONNX 格式不依赖 PyTorch，适合部署场景。
 | WebFace | 人脸识别 | `models/webface/webface_r50.onnx` |
@@ -404,6 +406,7 @@ python main.py headpose --dir test_faces --save
 | 人脸检测 | YOLOv26m WiderFace | [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) |
 | 人脸检测 | YuNet | [OpenCV Zoo - YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) |
 | 关键点校正 | PFLD_GhostOne (98点) | [PFLD_GhostOne](https://github.com/AnthonyF333/PFLD_GhostOne) |
+| 关键点校正 | MediaPipe FaceLandmarker (478点) | [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) |
 | 人脸识别 | SFace | [OpenCV Zoo - SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) |
 | 人脸质量评估 | FQA | [ModelScope - FQA](https://www.modelscope.cn/models/iic/cv_manual_face-quality-assessment_fqa) |
 | 人脸检测数据集 | WiderFace | [WiderFace](http://shuoyang1213.me/WIDERFACE/) |
