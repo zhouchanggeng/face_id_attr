@@ -27,19 +27,19 @@ detector:
 #     model_path: "models/yunet/face_detection_yunet_2023mar.onnx"
 #     conf_threshold: 0.5
 
-# 人脸校正 - 使用 PFLD_GhostOne 98 点关键点对齐
+# 人脸校正 - 使用 MediaPipe 478 点关键点对齐
 aligner:
-  class: "module.face_alignment.pfld_aligner.PFLDAligner"
+  class: "module.face_alignment.mediapipe_aligner.MediaPipeAligner"
   params:
-    model_path: "models/PFLD_GhostOne_112_1_opt_sim.onnx"
-    input_size: 112
+    model_path: "models/face_landmarker.task"
     output_size: [112, 112]
 
-# 可选校正器: MediaPipe 478 点关键点（精度更高，需要 mediapipe 库）
+# 可选校正器: PFLD_GhostOne 98 点关键点
 # aligner:
-#   class: "module.face_alignment.mediapipe_aligner.MediaPipeAligner"
+#   class: "module.face_alignment.pfld_aligner.PFLDAligner"
 #   params:
-#     model_path: "models/face_landmarker.task"
+#     model_path: "models/PFLD_GhostOne_112_1_opt_sim.onnx"
+#     input_size: 112
 #     output_size: [112, 112]
 
 # 人脸识别 - 使用 ArcFace (512维特征)

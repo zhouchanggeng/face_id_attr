@@ -50,41 +50,40 @@ class MediaPipeAligner(FaceAligner):
             base_options=BaseOptions(model_asset_path=model_path),
             output_face_blendshapes=False,
             output_facial_transformation_matrixes=False,
-            num_faces=1,
+            num_faces=5,
         )
         self._landmarker = FaceLandmarker.create_from_options(options)
 
     def predict_478pts(self, image: np.ndarray, face: dict) -> Optional[np.ndarray]:
         """预测 478 个关键点在原图上的坐标。
 
-        Args:
-            image: BGR 图像
-            face: 检测结果 dict (含 bbox)
-        Returns:
-            shape (478, 2) 的关键点坐标，或 None
+        在整张图上运行 MediaPipe，选择与 bbox 最匹配的人脸。
         """
         h, w = image.shape[:2]
-        x1, y1, x2, y2 = face["bbox"]
-        # 扩展裁剪区域 20%
-        fw, fh = x2 - x1, y2 - y1
-        pad_x, pad_y = int(fw * 0.2), int(fh * 0.2)
-        cx1 = max(0, x1 - pad_x)
-        cy1 = max(0, y1 - pad_y)
-        cx2 = min(w, x2 + pad_x)
-        cy2 = min(h, y2 + pad_y)
-        crop = image[cy1:cy2, cx1:cx2]
-
-        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
         result = self._landmarker.detect(mp_image)
 
         if not result.face_landmarks:
             return None
 
-        ch, cw = crop.shape[:2]
-        lm = result.face_landmarks[0]
-        pts = np.array([(l.x * cw + cx1, l.y * ch + cy1) for l in lm], dtype=np.float32)
-        return pts
+        x1, y1, x2, y2 = face["bbox"]
+        cx_target = (x1 + x2) / 2
+        cy_target = (y1 + y2) / 2
+
+        # 如果检测到多张脸，选择中心最接近 bbox 中心的
+        best_pts = None
+        best_dist = float("inf")
+        for lm in result.face_landmarks:
+            pts = np.array([(l.x * w, l.y * h) for l in lm], dtype=np.float32)
+            cx = pts[:, 0].mean()
+            cy = pts[:, 1].mean()
+            dist = (cx - cx_target) ** 2 + (cy - cy_target) ** 2
+            if dist < best_dist:
+                best_dist = dist
+                best_pts = pts
+
+        return best_pts
 
     def align(self, image: np.ndarray, face: dict) -> np.ndarray:
         """预测 478 点关键点，提取 5 关键点，仿射变换对齐。"""
