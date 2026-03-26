@@ -274,7 +274,11 @@ def cmd_detect(args, pipe, cfg):
 # ---- align ----
 
 def _draw_align_results(image, results, output_path, align_dir=None):
-    """在原图上画 5 关键点 + bbox，同时保存每张 align 后的人脸。"""
+    """在原图上画关键点 + bbox，同时保存每张 align 后的人脸。
+
+    如果有完整关键点（98/478），画所有点（小绿点）；
+    5 关键点用大彩色圆点 + 标签标注。
+    """
     vis = image.copy()
     POINT_NAMES = ["L-Eye", "R-Eye", "Nose", "L-Mouth", "R-Mouth"]
     POINT_COLORS = [(0, 255, 0), (0, 255, 255), (255, 0, 0), (255, 0, 255), (0, 165, 255)]
@@ -283,6 +287,14 @@ def _draw_align_results(image, results, output_path, align_dir=None):
     for idx, r in enumerate(results):
         x1, y1, x2, y2 = r["bbox"]
         cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+        # 画完整关键点（小绿点）
+        all_lm = r.get("all_landmarks")
+        if all_lm is not None:
+            for px, py in all_lm:
+                cv2.circle(vis, (int(px), int(py)), 1, (0, 200, 0), -1)
+
+        # 画 5 关键点（大彩色圆 + 标签）
         five_pts = r.get("five_points")
         if five_pts is not None:
             for j, (px, py) in enumerate(five_pts):
@@ -290,6 +302,15 @@ def _draw_align_results(image, results, output_path, align_dir=None):
                 cv2.circle(vis, (int(px), int(py)), 4, color, -1)
                 cv2.putText(vis, POINT_NAMES[j], (int(px) + 5, int(py) - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+
+        # 标签：关键点数量
+        n_pts = len(all_lm) if all_lm is not None else (5 if five_pts is not None else 0)
+        label = f"{n_pts}pts"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.rectangle(vis, (x1, y1 - th - 6), (x1 + tw + 4, y1), (255, 255, 255), -1)
+        cv2.putText(vis, label, (x1 + 2, y1 - 3),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
         aligned = r.get("aligned_face")
         if aligned is not None and align_dir:
             os.makedirs(align_dir, exist_ok=True)

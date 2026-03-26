@@ -117,6 +117,13 @@ class FaceRecogPipeline:
         except ImportError:
             from module.face_alignment.pfld_aligner import PFLDAligner
         try:
+            from .module.face_alignment.mediapipe_aligner import MediaPipeAligner
+        except ImportError:
+            try:
+                from module.face_alignment.mediapipe_aligner import MediaPipeAligner
+            except ImportError:
+                MediaPipeAligner = None
+        try:
             from .module.face_analysis.head_pose_estimator import estimate_head_pose
         except ImportError:
             from module.face_analysis.head_pose_estimator import estimate_head_pose
@@ -128,12 +135,20 @@ class FaceRecogPipeline:
         for face in faces:
             face_img = self._get_face_image(resized, face)
 
-            # 提取 98 点和 5 关键点（缩放图坐标系）
+            # 提取关键点（缩放图坐标系）
             five_pts = None
             pts_98 = None
+            all_landmarks = None  # 完整关键点（98 或 478）
+
             if isinstance(self.aligner, PFLDAligner):
                 pts_98 = self.aligner.predict_98pts(resized, face)
                 five_pts = pts_98[PFLDAligner.FIVE_POINT_IDX].copy()
+                all_landmarks = pts_98
+            elif MediaPipeAligner is not None and isinstance(self.aligner, MediaPipeAligner):
+                pts_478 = self.aligner.predict_478pts(resized, face)
+                if pts_478 is not None:
+                    five_pts = pts_478[MediaPipeAligner.FIVE_POINT_IDX].copy()
+                    all_landmarks = pts_478
             elif face.get("landmarks") is not None and len(face["landmarks"]) >= 5:
                 five_pts = face["landmarks"][:5].copy()
 
@@ -147,6 +162,8 @@ class FaceRecogPipeline:
                     five_pts = (five_pts * inv).astype(np.float32)
                 if pts_98 is not None:
                     pts_98 = (pts_98 * inv).astype(np.float32)
+                if all_landmarks is not None:
+                    all_landmarks = (all_landmarks * inv).astype(np.float32)
 
             # 头部姿态估计（需要 98 点关键点）
             head_pose = None
@@ -163,6 +180,7 @@ class FaceRecogPipeline:
                 "confidence": face["confidence"],
                 "five_points": five_pts,
                 "landmarks_98": pts_98,
+                "all_landmarks": all_landmarks,
                 "aligned_face": face_img,
                 "quality": quality_score,
                 "head_pose": head_pose,
