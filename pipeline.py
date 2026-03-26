@@ -285,17 +285,16 @@ class FaceRecogPipeline:
             if not label_parts:
                 label_parts.append(f"{r.get('confidence', 0):.2f}")
 
-            # 属性信息
+            # 属性信息（合并到标签中）
             attr = r.get("attributes", {})
-            attr_lines = []
-            if attr.get("age") is not None:
-                attr_lines.append(f"Age:{attr['age']}")
-            if attr.get("gender"):
-                attr_lines.append(attr["gender"])
             if attr.get("dominant_emotion"):
-                attr_lines.append(attr["dominant_emotion"])
+                label_parts.append(attr["dominant_emotion"])
+            if attr.get("age") is not None:
+                label_parts.append(f"Age:{attr['age']}")
+            if attr.get("gender"):
+                label_parts.append(attr["gender"])
             if attr.get("dominant_race"):
-                attr_lines.append(attr["dominant_race"])
+                label_parts.append(attr["dominant_race"])
 
             # 文字黑色，白色背景
             label = " ".join(label_parts)
@@ -303,11 +302,6 @@ class FaceRecogPipeline:
             cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw + 4, y1), (255, 255, 255), -1)
             cv2.putText(vis, label, (x1 + 2, y1 - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-
-            for i, line in enumerate(attr_lines):
-                ty = y2 + 18 + i * 20
-                cv2.putText(vis, line, (x1, ty),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         cv2.imwrite(output_path, vis)
         return output_path
