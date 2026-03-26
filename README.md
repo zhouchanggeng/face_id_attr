@@ -4,14 +4,17 @@
 
 ## Recent Updates
 
-- **2026.03.25** — 新增人脸质量评估模块（FQA），集成达摩院质量评分模型，支持 `quality` 命令和 CSV 报告
-- **2026.03.25** — 新增 `align` 命令，可视化 5 关键点并保存对齐后的人脸图像
-- **2026.03.25** — 新增 `visualize` 命令，支持 t-SNE / PCA / UMAP 特征分布可视化
-- **2026.03.25** — 注册去重：基于特征余弦相似度自动跳过重复人脸
-- **2026.03.25** — YOLO 检测器支持 ONNX 模型格式，适合部署场景
+- **2026.03.26** — 新增头部姿态估计（PFLD 98 点 + solvePnP），`headpose` 命令输出 Yaw/Pitch/Roll + 3D 坐标轴
+- **2026.03.26** — 新增表情识别 / 微笑检测（ExpressionAnalyzer），支持 7 类表情和 smile_mode 切换
+- **2026.03.26** — 视频模式集成表情识别，每帧实时标注表情
+- **2026.03.26** — 新增 ArcFace 人脸识别模块（512 维），支持 glint360k_r50 和 webface_r50
+- **2026.03.26** — 打包为可安装 Python 包，支持 `pip install -e .`
+- **2026.03.25** — 新增 SER-FIQ 质量评估（基于 ArcFace 特征稳定性），替换达摩院 FQA
+- **2026.03.25** — 新增 `video` 命令，视频人脸识别（IoU/SORT/ByteTrack 跟踪）
+- **2026.03.25** — 新增 `evaluate` 命令，Rank-1/Precision/Recall/F1/AUC/EER 评测
+- **2026.03.25** — 新增人脸质量评估模块，支持 `quality` 命令和 CSV 报告
 - **2026.03.24** — 集成 PFLD_GhostOne 98 点关键点模型用于人脸校正
 - **2026.03.24** — 移除 DeepFace 依赖，全部改用轻量级 ONNX / OpenCV 方案
-- **2026.03.24** — 合并 CLI 命令，统一使用 `--img` / `--dir` 区分单张和批量操作
 
 ## 特性
 
@@ -24,6 +27,9 @@
 - **完整 CLI**：注册、识别、比对、检测、关键点对齐、特征可视化，支持单张和批量操作
 - **注册去重**：基于特征余弦相似度自动跳过已注册的重复人脸，阈值可配置
 - **特征可视化**：支持 t-SNE / PCA / UMAP 降维可视化已注册人脸特征分布，输出类内相似度统计
+- **表情识别 / 微笑检测**：基于 YOLO 分类模型，支持 7 类表情和微笑二分类，可配置切换
+- **头部姿态估计**：基于 PFLD 98 点关键点 + solvePnP，输出 Yaw/Pitch/Roll 角度和 3D 坐标轴可视化
+- **视频人脸识别**：检测 + 跟踪（IoU/SORT/ByteTrack）+ 定期识别 + 实时表情标注
 
 ## 项目结构
 
@@ -299,7 +305,7 @@ quality_assessor:
 ## 流水线架构
 
 ```
-输入图像
+输入图像 / 视频帧
   │
   ▼
 ┌─────────────┐
@@ -310,25 +316,60 @@ quality_assessor:
 ┌─────────────┐
 │  人脸校正    │  PFLDAligner (98点) / SimpleAligner (5点) / SFace alignCrop
 └──────┬──────┘
-       │ aligned_face: 112x112 BGR
+       │ aligned_face: 112x112 BGR, landmarks_98
+       ├──────────────────────────────────┐
+       ▼                                  ▼
+┌─────────────┐                  ┌──────────────────┐
+│  质量评估    │  SER-FIQ         │  头部姿态估计      │  solvePnP → Yaw/Pitch/Roll
+└──────┬──────┘                  └──────────────────┘
        ▼
 ┌─────────────┐
-│  质量评估    │  FQAAssessor (0~1 质量分，可选)
+│  特征提取    │  ArcFaceRecognizer (512维) / SFaceRecognizer (128维)
 └──────┬──────┘
-       │ quality: float
-       ▼
-┌─────────────┐
-│  特征提取    │  SFaceRecognizer (128维) / HistogramRecognizer
-└──────┬──────┘
-       │ feature: np.ndarray
-       ▼
-┌─────────────┐
-│  向量检索    │  NumpyFaceDatabase (余弦相似度)
-└──────┬──────┘
+       │
+       ├──────────────────────────────────┐
+       ▼                                  ▼
+┌─────────────┐                  ┌──────────────────┐
+│  向量检索    │  NumpyFaceDatabase │  表情识别 / 微笑   │  ExpressionAnalyzer (7类)
+└──────┬──────┘                  └──────────────────┘
        │ identity, similarity
+       ▼
+┌─────────────┐
+│  人脸跟踪    │  IoUTracker / SORTTracker / ByteTracker (视频模式)
+└──────┬──────┘
        ▼
      输出结果
 ```
+
+## 头部姿态估计
+
+基于 PFLD 98 点关键点 + `cv2.solvePnP` 估算三个欧拉角：
+
+![Head Pose Angles](docs/head_pose_angles.png)
+
+| 角度 | 含义 | 正值方向 |
+|------|------|----------|
+| Yaw | 偏航角（左右转头） | 向右 |
+| Pitch | 俯仰角（抬头低头） | 抬头 |
+| Roll | 翻滚角（歪头） | 向右歪 |
+
+从 98 点中选取 6 个稳定参考点，与标准 3D 人脸模型对应求解：
+
+| 参考点 | WFLW 索引 |
+|--------|-----------|
+| 鼻尖 | 54 |
+| 下巴 | 16 |
+| 左眼外角 | 60 |
+| 右眼外角 | 72 |
+| 左嘴角 | 76 |
+| 右嘴角 | 82 |
+
+```bash
+python main.py headpose --img face.jpg --save
+python main.py headpose --dir test_faces --save
+```
+
+输出图片上绘制 3D 坐标轴（红=X, 绿=Y, 蓝=Z）和角度标签。
 
 ## 扩展开发
 
@@ -348,8 +389,8 @@ quality_assessor:
 - [ ] 人脸追踪（Face Tracking）— 视频流多目标人脸跟踪（DeepSORT / ByteTrack）
 - [x] 人脸质量评估（Face Quality Assessment）— 达摩院 FQA 模型，0~1 质量打分 + CSV 报告
 - [ ] 口罩检测与遮挡人脸识别 — 戴口罩/墨镜场景下的检测与识别
-- [ ] 人脸属性分析 — 年龄、性别、表情、种族（轻量级 ONNX 模型替代 DeepFace）
-- [ ] 头部姿态估计（Head Pose Estimation）— 偏航角/俯仰角/翻滚角
+- [x] 人脸属性分析 — 表情识别（RAF-DB 7类）+ 微笑检测，基于 YOLO 分类模型
+- [x] 头部姿态估计（Head Pose Estimation）— PFLD 98点 + solvePnP，Yaw/Pitch/Roll + 3D 坐标轴
 - [ ] 人脸分割（Face Parsing）— 面部区域语义分割（皮肤/眉毛/眼睛/嘴唇等）
 - [ ] 视频流实时推理 — RTSP / USB 摄像头实时人脸识别
 - [ ] FAISS / Milvus 向量数据库 — 大规模人脸库高效检索
