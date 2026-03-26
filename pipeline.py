@@ -116,15 +116,21 @@ class FaceRecogPipeline:
             from .module.face_alignment.pfld_aligner import PFLDAligner
         except ImportError:
             from module.face_alignment.pfld_aligner import PFLDAligner
+        try:
+            from .module.face_analysis.head_pose_estimator import estimate_head_pose
+        except ImportError:
+            from module.face_analysis.head_pose_estimator import estimate_head_pose
 
         resized, scale = self._limit_size(image, self.max_image_size)
+        h_orig, w_orig = image.shape[:2]
         faces = self.detector.detect(resized)
         results = []
         for face in faces:
             face_img = self._get_face_image(resized, face)
 
-            # 提取 5 关键点（缩放图坐标系）
+            # 提取 98 点和 5 关键点（缩放图坐标系）
             five_pts = None
+            pts_98 = None
             if isinstance(self.aligner, PFLDAligner):
                 pts_98 = self.aligner.predict_98pts(resized, face)
                 five_pts = pts_98[PFLDAligner.FIVE_POINT_IDX].copy()
@@ -139,6 +145,13 @@ class FaceRecogPipeline:
                                 int(x2 * inv), int(y2 * inv))
                 if five_pts is not None:
                     five_pts = (five_pts * inv).astype(np.float32)
+                if pts_98 is not None:
+                    pts_98 = (pts_98 * inv).astype(np.float32)
+
+            # 头部姿态估计（需要 98 点关键点）
+            head_pose = None
+            if pts_98 is not None:
+                head_pose = estimate_head_pose(pts_98, (w_orig, h_orig))
 
             # 质量评估
             quality_score = None
@@ -149,8 +162,10 @@ class FaceRecogPipeline:
                 "bbox": face["bbox"],
                 "confidence": face["confidence"],
                 "five_points": five_pts,
+                "landmarks_98": pts_98,
                 "aligned_face": face_img,
                 "quality": quality_score,
+                "head_pose": head_pose,
             })
         return results
 

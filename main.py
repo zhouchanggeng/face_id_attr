@@ -336,6 +336,62 @@ def cmd_align(args, pipe, cfg):
                 print(f"  -> 保存: {out}")
 
 
+# ---- headpose ----
+
+def cmd_headpose(args, pipe, cfg):
+    """头部姿态估计：检测 -> 关键点 -> solvePnP -> Yaw/Pitch/Roll。"""
+    try:
+        from .module.face_analysis.head_pose_estimator import draw_head_pose_axes
+    except ImportError:
+        from module.face_analysis.head_pose_estimator import draw_head_pose_axes
+
+    def _process_one(img, img_name, out_path=None):
+        results = pipe.align_faces(img)
+        print(f"{img_name}: 检测到 {len(results)} 张人脸")
+        for i, r in enumerate(results):
+            pose = r.get("head_pose")
+            if pose:
+                print(f"  [{i}] Yaw={pose['yaw']:.1f}° Pitch={pose['pitch']:.1f}° Roll={pose['roll']:.1f}°")
+            else:
+                print(f"  [{i}] 无关键点，无法估算姿态")
+        if out_path and results:
+            vis = img.copy()
+            for r in results:
+                x1, y1, x2, y2 = r["bbox"]
+                cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                pose = r.get("head_pose")
+                pts_98 = r.get("landmarks_98")
+                if pose and pts_98 is not None:
+                    vis = draw_head_pose_axes(vis, pts_98, pose, axis_length=60)
+                    label = f"Y:{pose['yaw']:.0f} P:{pose['pitch']:.0f} R:{pose['roll']:.0f}"
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                    cv2.rectangle(vis, (x1, y1 - th - 6), (x1 + tw + 4, y1), (255, 255, 255), -1)
+                    cv2.putText(vis, label, (x1 + 2, y1 - 3),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            cv2.imwrite(out_path, vis)
+            print(f"  -> 保存: {out_path}")
+
+    if args.img:
+        img = cv2.imread(args.img)
+        if img is None:
+            raise FileNotFoundError(f"无法读取图片: {args.img}")
+        out = _output_path(args.img, args.output_dir) if args.save else None
+        _process_one(img, os.path.basename(args.img), out)
+    else:
+        images_dir = args.dir or cfg.get("images_dir", "images")
+        if not os.path.isdir(images_dir):
+            raise FileNotFoundError(f"目录不存在: {images_dir}")
+        out_dir = args.output_dir or _default_output_dir(images_dir, cfg, "headpose")
+        for img_path in _iter_images(images_dir):
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"[跳过] 无法读取: {img_path}")
+                continue
+            filename = os.path.relpath(img_path, images_dir)
+            out = _output_path(img_path, out_dir, images_dir) if args.save else None
+            _process_one(img, filename, out)
+
+
 # ---- quality ----
 
 def cmd_quality(args, pipe, cfg):
@@ -670,10 +726,15 @@ def cmd_video(args, pipe, cfg):
                             track.identity = pred_id
                 track.recognized = True
 
-            # 表情识别（每帧，因为表情变化快）
+            # 表情识别（每帧，使用 EMA 平滑）
             if pipe.analyzer is not None and hasattr(pipe.analyzer, "classify"):
                 emo = pipe.analyzer.classify(face_img)
-                track._emotion = emo.get("dominant_emotion", "")
+                emotion_probs = emo.get("emotion", {})
+                # 使用 Track 的平滑方法更新表情
+                if hasattr(track, "update_emotion"):
+                    track.update_emotion(emotion_probs)
+                else:
+                    track._emotion = emo.get("dominant_emotion", "")
             else:
                 track._emotion = getattr(track, "_emotion", "")
 
@@ -1014,6 +1075,12 @@ def main():
     p_ana.add_argument("--save", action="store_true", help="保存结果图片")
     p_ana.add_argument("--output-dir", default=None, help="结果保存目录 (默认: results)")
 
+    # headpose
+    p_hp = sub.add_parser("headpose", help="头部姿态估计 Yaw/Pitch/Roll (--img 单张 / --dir 批量)")
+    _add_img_dir_args(p_hp)
+    p_hp.add_argument("--save", action="store_true", help="保存结果图片（含 3D 坐标轴）")
+    p_hp.add_argument("--output-dir", default=None, help="结果保存目录")
+
     # quality
     p_qa = sub.add_parser("quality", help="人脸质量评估 (--img 单张 / --dir 批量，批量输出 CSV 报告)")
     _add_img_dir_args(p_qa)
@@ -1060,6 +1127,7 @@ def main():
         "detect": cmd_detect,
         "align": cmd_align,
         "analyze": cmd_analyze,
+        "headpose": cmd_headpose,
         "quality": cmd_quality,
         "list": cmd_list,
         "remove": cmd_remove,
