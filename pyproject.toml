@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face_id_attr"
+version = "0.1.0"
+description = "模块化人脸识别流水线：检测、校正、识别、跟踪、质量评估"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "opencv-python>=4.5",
+    "numpy>=1.20",
+    "pyyaml>=6.0",
+    "onnxruntime>=1.14",
+]
+
+[project.optional-dependencies]
+yolo = ["ultralytics>=8.3"]
+viz = ["scikit-learn", "matplotlib"]
+all = ["ultralytics>=8.3", "scikit-learn", "matplotlib"]
+
+[project.scripts]
+face-id-attr = "face_id_attr.main:main"
+
+[tool.setuptools]
+packages = ["face_id_attr", "face_id_attr.module",
+            "face_id_attr.module.face_detection",
+            "face_id_attr.module.face_alignment",
+            "face_id_attr.module.face_recognition",
+            "face_id_attr.module.face_database",
+            "face_id_attr.module.face_analysis",
+            "face_id_attr.module.face_quality",
+            "face_id_attr.module.face_tracking"]
+
+[tool.setuptools.package-dir]
+face_id_attr = "."
+
+[tool.setuptools.package-data]
+face_id_attr = ["config.yaml"]

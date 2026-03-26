@@ -2,13 +2,22 @@
 import importlib
 import yaml
 
-from pipeline import FaceRecogPipeline
+from .pipeline import FaceRecogPipeline
 
 
 def _create_instance(cfg: dict):
-    """根据 {"class": "module.ClassName", "params": {...}} 动态实例化。"""
+    """根据 {"class": "module.ClassName", "params": {...}} 动态实例化。
+
+    config 中的 class 路径支持两种格式:
+        - "module.face_detection.yolo_detector.YOLOFaceDetector" (短路径，自动加 face_id_attr 前缀)
+        - "face_id_attr.module.face_detection.yolo_detector.YOLOFaceDetector" (完整路径)
+    """
     module_path, class_name = cfg["class"].rsplit(".", 1)
-    module = importlib.import_module(module_path)
+    # 尝试直接导入，失败则加 face_id_attr 前缀
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        module = importlib.import_module(f"face_id_attr.{module_path}")
     cls = getattr(module, class_name)
     params = cfg.get("params") or {}
     return cls(**params)

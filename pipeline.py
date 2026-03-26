@@ -2,12 +2,12 @@ from typing import List, Optional
 import numpy as np
 import cv2
 
-from module.face_detection.base import FaceDetector
-from module.face_alignment.base import FaceAligner
-from module.face_recognition.base import FaceRecognizer
-from module.face_database.base import FaceDatabase
-from module.face_analysis.base import FaceAnalyzer
-from module.face_quality.base import FaceQualityAssessor
+from .module.face_detection.base import FaceDetector
+from .module.face_alignment.base import FaceAligner
+from .module.face_recognition.base import FaceRecognizer
+from .module.face_database.base import FaceDatabase
+from .module.face_analysis.base import FaceAnalyzer
+from .module.face_quality.base import FaceQualityAssessor
 
 
 class FaceRecogPipeline:
@@ -104,7 +104,7 @@ class FaceRecogPipeline:
             five_points: shape (5, 2)，原图坐标系下的 5 个关键点
             aligned_face: 对齐后的 112x112 BGR 图像
         """
-        from module.face_alignment.pfld_aligner import PFLDAligner
+        from .module.face_alignment.pfld_aligner import PFLDAligner
 
         resized, scale = self._limit_size(image, self.max_image_size)
         faces = self.detector.detect(resized)

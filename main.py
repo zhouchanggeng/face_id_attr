@@ -35,7 +35,7 @@ import argparse
 import os
 import cv2
 
-from factory import build_pipeline
+from .factory import build_pipeline
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -553,9 +553,9 @@ def cmd_visualize(args, pipe, cfg):
 
 def cmd_video(args, pipe, cfg):
     """视频人脸识别：检测 + 跟踪 + 识别，输出标注视频。"""
-    from module.face_tracking.iou_tracker import IoUTracker
-    from module.face_tracking.sort_tracker import SORTTracker
-    from module.face_tracking.byte_tracker import ByteTracker
+    from .module.face_tracking.iou_tracker import IoUTracker
+    from .module.face_tracking.sort_tracker import SORTTracker
+    from .module.face_tracking.byte_tracker import ByteTracker
 
     TRACKERS = {"iou": IoUTracker, "sort": SORTTracker, "byte": ByteTracker}
 
