@@ -54,9 +54,15 @@ database:
     dup_threshold: 0.9
   db_path: "face_db.npz"
 
-# 人脸属性分析（已禁用，移除 deepface 依赖后不可用）
-# 如需属性分析，可实现基于其他库的 FaceAnalyzer
-analyzer: null
+# 人脸属性分析 - 表情识别（RAF-DB 7类，基于 YOLO 分类模型）
+analyzer:
+  class: "module.face_analysis.expression_analyzer.ExpressionAnalyzer"
+  params:
+    model_path: "models/expression/yolo26s_cls_rafdb.onnx"
+    input_size: 224
+
+# 禁用属性分析:
+# analyzer: null
 
 # 人脸质量评估 - SER-FIQ（基于识别模型的特征稳定性评估，复用 ArcFace 模型）
 quality_assessor:

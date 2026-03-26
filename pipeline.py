@@ -213,22 +213,48 @@ class FaceRecogPipeline:
     # ---- 人脸属性分析 ----
 
     def analyze_faces(self, image: np.ndarray) -> List[dict]:
-        """检测人脸并分析属性（年龄、性别、表情、种族）。"""
+        """检测人脸 -> 对齐 -> 属性分析（表情等）。
+
+        使用对齐后的人脸图像进行分析，精度更高。
+        如果 analyzer 有 classify() 方法（如 ExpressionAnalyzer），
+        则对每张对齐后的人脸单独调用；否则 fallback 到 analyze()。
+        """
         if self.analyzer is None:
             raise RuntimeError("未配置人脸分析器 (analyzer)")
         resized, scale = self._limit_size(image, self.max_image_size)
         faces = self.detector.detect(resized)
         if not faces:
             return []
-        attrs = self.analyzer.analyze(resized, faces)
-        if scale < 1.0:
-            inv = 1.0 / scale
-            for f in faces:
-                x1, y1, x2, y2 = f["bbox"]
-                f["bbox"] = (int(x1 * inv), int(y1 * inv),
-                             int(x2 * inv), int(y2 * inv))
-        return [{**face, "attributes": attr}
-                for face, attr in zip(faces, attrs)]
+
+        results = []
+        for face in faces:
+            # 对齐人脸
+            face_img = self._get_face_image(resized, face)
+
+            # 质量评估
+            quality = None
+            if self.quality_assessor is not None:
+                quality = self.quality_assessor.assess(face_img)
+
+            # 属性分析（优先用对齐后的图像）
+            if hasattr(self.analyzer, "classify"):
+                attr = self.analyzer.classify(face_img)
+            else:
+                attr = self.analyzer.analyze(resized, [face])[0]
+
+            # bbox 映射回原图
+            if scale < 1.0:
+                inv = 1.0 / scale
+                x1, y1, x2, y2 = face["bbox"]
+                face["bbox"] = (int(x1 * inv), int(y1 * inv),
+                                int(x2 * inv), int(y2 * inv))
+
+            results.append({
+                **face,
+                "attributes": attr,
+                "quality": quality,
+            })
+        return results
 
     @staticmethod
     def draw_results(image: np.ndarray, results: List[dict], output_path: str) -> str:
