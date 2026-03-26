@@ -32,9 +32,13 @@ class ExpressionAnalyzer(FaceAnalyzer):
     """
 
     def __init__(self, model_path: str, input_size: int = 224,
-                 class_names: Optional[list] = None, threshold: float = 0.0):
+                 class_names: Optional[list] = None, threshold: float = 0.0,
+                 smile_mode: bool = False, smile_classes: Optional[list] = None):
         self.input_size = input_size
         self.threshold = threshold
+        self.smile_mode = smile_mode
+        # 哪些类别算"微笑"（默认 Happiness）
+        self.smile_classes = smile_classes or ["Happiness"]
         self.session = onnxruntime.InferenceSession(
             model_path,
             providers=onnxruntime.get_available_providers(),
@@ -77,11 +81,13 @@ class ExpressionAnalyzer(FaceAnalyzer):
     def classify(self, face_image: np.ndarray) -> dict:
         """对单张人脸图像进行分类。
 
+        smile_mode=True 时，将结果映射为 Smile / No_Smile。
+
         Returns:
             {
-                "dominant_emotion": str,       # 主要类别
-                "emotion": {name: prob, ...},  # 各类别概率
-                "confidence": float,           # 主要类别的置信度
+                "dominant_emotion": str,
+                "emotion": {name: prob, ...},
+                "confidence": float,
             }
         """
         blob = self._preprocess(face_image)
@@ -100,6 +106,17 @@ class ExpressionAnalyzer(FaceAnalyzer):
         for i, name in enumerate(self.class_names):
             if i < len(probs):
                 emotion_dict[name] = float(probs[i])
+
+        # 微笑检测模式：汇总 smile_classes 的概率
+        if self.smile_mode:
+            smile_prob = sum(emotion_dict.get(c, 0) for c in self.smile_classes)
+            is_smile = dominant in self.smile_classes
+            return {
+                "dominant_emotion": "Smile" if is_smile else "No_Smile",
+                "emotion": {"Smile": smile_prob, "No_Smile": 1 - smile_prob},
+                "confidence": smile_prob if is_smile else 1 - smile_prob,
+                "detail": emotion_dict,  # 保留原始 7 类详情
+            }
 
         return {
             "dominant_emotion": dominant,

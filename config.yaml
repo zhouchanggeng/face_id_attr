@@ -54,31 +54,24 @@ database:
     dup_threshold: 0.9
   db_path: "face_db.npz"
 
-# 人脸属性分析 - 表情识别（RAF-DB 7类）
+# 人脸属性分析 - 微笑检测（复用 7 类表情模型，Happiness 映射为 Smile）
 analyzer:
   class: "module.face_analysis.expression_analyzer.ExpressionAnalyzer"
   params:
     model_path: "models/expression/yolo26s_cls_rafdb.onnx"
     input_size: 224
-    class_names: "rafdb_7"    # 预设: rafdb_7 / ferplus_8 / affectnet_7 / affectnet_8 / smile_2
-    threshold: 0.0            # 置信度阈值，低于此值输出 Unknown
+    class_names: "rafdb_7"
+    smile_mode: true
+    smile_classes: ["Happiness"]  # 哪些表情类别算"微笑"
 
-# 可选: 微笑检测（2分类模型）
+# 可选: 7 类表情识别（关闭 smile_mode）
 # analyzer:
 #   class: "module.face_analysis.expression_analyzer.ExpressionAnalyzer"
 #   params:
-#     model_path: "models/expression/smile_detector.onnx"
+#     model_path: "models/expression/yolo26s_cls_rafdb.onnx"
 #     input_size: 224
-#     class_names: "smile_2"
-#     threshold: 0.5
-
-# 可选: 自定义类别列表
-# analyzer:
-#   class: "module.face_analysis.expression_analyzer.ExpressionAnalyzer"
-#   params:
-#     model_path: "models/expression/custom_model.onnx"
-#     input_size: 224
-#     class_names: ["Happy", "Sad", "Angry"]
+#     class_names: "rafdb_7"
+#     smile_mode: false
 
 # 禁用属性分析:
 # analyzer: null
