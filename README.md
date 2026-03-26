@@ -4,15 +4,14 @@
 
 ## Recent Updates
 
+- **2026.03.26** — 新增 MediaPipe 478 点关键点校正（MediaPipeAligner），align 命令支持绘制完整关键点
 - **2026.03.26** — 新增头部姿态估计（PFLD 98 点 + solvePnP），`headpose` 命令输出 Yaw/Pitch/Roll + 3D 坐标轴
 - **2026.03.26** — 新增表情识别 / 微笑检测（ExpressionAnalyzer），支持 7 类表情和 smile_mode 切换
-- **2026.03.26** — 视频模式集成表情识别，每帧实时标注表情
 - **2026.03.26** — 新增 ArcFace 人脸识别模块（512 维），支持 glint360k_r50 和 webface_r50
-- **2026.03.26** — 打包为可安装 Python 包，支持 `pip install -e .`
+- **2026.03.26** — 打包为可安装 Python 包，支持 `pip install -e .` 和 `from face_id_attr import ...`
 - **2026.03.25** — 新增 SER-FIQ 质量评估（基于 ArcFace 特征稳定性），替换达摩院 FQA
-- **2026.03.25** — 新增 `video` 命令，视频人脸识别（IoU/SORT/ByteTrack 跟踪）
+- **2026.03.25** — 新增 `video` 命令，视频人脸识别（IoU/SORT/ByteTrack 跟踪）+ 实时表情标注
 - **2026.03.25** — 新增 `evaluate` 命令，Rank-1/Precision/Recall/F1/AUC/EER 评测
-- **2026.03.25** — 新增人脸质量评估模块，支持 `quality` 命令和 CSV 报告
 - **2026.03.24** — 集成 PFLD_GhostOne 98 点关键点模型用于人脸校正
 - **2026.03.24** — 移除 DeepFace 依赖，全部改用轻量级 ONNX / OpenCV 方案
 
@@ -21,9 +20,10 @@
 - **模块化架构**：检测、校正、识别、数据库、属性分析五大模块，各自独立，通过抽象基类约束接口
 - **配置驱动**：通过 `config.yaml` 动态加载模块，切换算法只需改配置
 - **多种检测器**：YOLO（v8/v11/v12/v26）、YuNet（OpenCV 轻量级）、OpenCV DNN/Haar
-- **PFLD 关键点校正**：集成 PFLD_GhostOne 98 点关键点模型，基于 5 关键点仿射变换对齐人脸
-- **SFace 特征提取**：基于 OpenCV FaceRecognizerSF，提取 128 维特征向量，纯 CPU 可运行
-- **向量数据库**：内置 NumPy 余弦相似度检索，支持注册、搜索、删除，可扩展为 FAISS/Milvus
+- **多种关键点校正**：PFLD 98 点、MediaPipe 478 点、SimpleAligner 5 点，可配置切换
+- **多种识别器**：ArcFace 512 维（glint360k/webface）、SFace 128 维（OpenCV）
+- **SER-FIQ 质量评估**：基于识别模型特征稳定性，不需要额外质量模型
+- **向量数据库**：内置 NumPy 余弦相似度检索，注册自动去重，可扩展为 FAISS/Milvus
 - **完整 CLI**：注册、识别、比对、检测、关键点对齐、特征可视化，支持单张和批量操作
 - **注册去重**：基于特征余弦相似度自动跳过已注册的重复人脸，阈值可配置
 - **特征可视化**：支持 t-SNE / PCA / UMAP 降维可视化已注册人脸特征分布，输出类内相似度统计
@@ -35,6 +35,9 @@
 
 ```
 face_id_attr/
+├── __init__.py              # 包入口
+├── __main__.py              # python -m face_id_attr 支持
+├── pyproject.toml           # 打包配置
 ├── main.py                  # CLI 入口
 ├── factory.py               # 根据 config.yaml 动态构建 pipeline
 ├── pipeline.py              # FaceRecogPipeline 流水线核心
@@ -42,48 +45,56 @@ face_id_attr/
 ├── requirements.txt         # Python 依赖
 ├── module/
 │   ├── face_detection/      # 人脸检测模块
-│   │   ├── base.py          #   抽象基类 FaceDetector
-│   │   ├── yolo_detector.py #   YOLO 检测器 (Ultralytics)
+│   │   ├── yolo_detector.py #   YOLO 检测器 (.pt/.onnx)
 │   │   ├── yunet_detector.py#   YuNet 检测器 (OpenCV)
 │   │   └── opencv_detector.py#  OpenCV DNN / Haar 检测器
 │   ├── face_alignment/      # 人脸校正模块
-│   │   ├── base.py          #   抽象基类 FaceAligner
-│   │   ├── pfld_aligner.py  #   PFLD_GhostOne 98点关键点校正
-│   │   └── simple_aligner.py#   简单 5 点仿射变换校正
+│   │   ├── pfld_aligner.py  #   PFLD_GhostOne 98 点关键点
+│   │   ├── mediapipe_aligner.py # MediaPipe 478 点关键点
+│   │   └── simple_aligner.py#   简单 5 点仿射变换
 │   ├── face_recognition/    # 人脸识别模块
-│   │   ├── base.py          #   抽象基类 FaceRecognizer
-│   │   ├── sface_recognizer.py # SFace 128维特征提取 (OpenCV)
+│   │   ├── arcface_recognizer.py # ArcFace 512 维 (glint360k/webface)
+│   │   ├── sface_recognizer.py   # SFace 128 维 (OpenCV)
 │   │   └── histogram_recognizer.py # 直方图特征 (演示用)
 │   ├── face_database/       # 人脸向量数据库
-│   │   ├── base.py          #   抽象基类 FaceDatabase
-│   │   └── numpy_db.py      #   NumPy 余弦相似度检索
-│   └── face_analysis/       # 人脸属性分析模块
-│       └── base.py          #   抽象基类 FaceAnalyzer
+│   │   └── numpy_db.py      #   NumPy 余弦相似度检索 + 去重
+│   ├── face_quality/        # 人脸质量评估模块
+│   │   ├── serfiq_assessor.py #  SER-FIQ (基于识别模型特征稳定性)
+│   │   └── fqa_assessor.py  #   达摩院 FQA 模型
+│   ├── face_analysis/       # 人脸属性分析模块
+│   │   ├── expression_analyzer.py # 表情识别 / 微笑检测
+│   │   └── head_pose_estimator.py # 头部姿态估计
+│   └── face_tracking/       # 人脸跟踪模块 (视频)
+│       ├── iou_tracker.py   #   IoU 贪心匹配
+│       ├── sort_tracker.py  #   SORT (Kalman + 匈牙利)
+│       └── byte_tracker.py  #   ByteTrack (两阶段关联)
 ├── models/                  # 模型文件 (不纳入 git)
-│   ├── yolo26m_wider_face/  #   YOLO 人脸检测模型
-│   ├── sface/               #   SFace 人脸识别模型
-│   ├── yunet/               #   YuNet 人脸检测模型
-│   ├── webface/             #   WebFace 识别模型
-│   └── PFLD_GhostOne_112_1_opt_sim.onnx  # PFLD 关键点模型
-├── known_faces/             # 已知人脸图片 (按身份分子文件夹)
-├── images/                  # 待识别图片
-└── results/                 # 识别结果输出
+├── docs/                    # 文档资源
+└── results/                 # 输出结果
 ```
 
 ## 安装
 
 ```bash
-pip install -r requirements.txt
+# 基础安装
+pip install -e .
+
+# 带 YOLO 检测器
+pip install -e ".[yolo]"
+
+# 带 MediaPipe 关键点
+pip install -e ".[mediapipe]"
+
+# 全部依赖
+pip install -e ".[all]"
+
+# 从 GitHub 安装
+pip install git+https://github.com/zhouchanggeng/face_id_attr.git
 ```
 
-依赖：
-- `opencv-python >= 4.5`
-- `numpy >= 1.20`
-- `pyyaml >= 6.0`
-- `ultralytics >= 8.3`（YOLO 检测器）
-- `onnxruntime >= 1.14`（PFLD 关键点校正）
-- `scikit-learn`（特征可视化 t-SNE/PCA，可选）
-- `matplotlib`（特征可视化绘图，可选）
+核心依赖：`opencv-python`, `numpy`, `pyyaml`, `onnxruntime`
+
+可选依赖：`ultralytics`(YOLO), `mediapipe`(478点关键点), `scikit-learn`+`matplotlib`(可视化)
 
 ## 模型准备
 
@@ -95,13 +106,14 @@ pip install -r requirements.txt
 | YOLO WiderFace | 人脸检测 | ONNX | `models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx` |
 | YuNet | 人脸检测 (轻量) | ONNX | `models/yunet/face_detection_yunet_2023mar.onnx` |
 | SFace | 人脸识别 (128维) | ONNX | `models/sface/face_recognition_sface_2021dec.onnx` |
+| ArcFace Glint360K | 人脸识别 (512维) | ONNX | `models/arcface/glint360k_r50.onnx` |
+| ArcFace WebFace | 人脸识别 (512维) | ONNX | `models/arcface/webface_r50.onnx` |
 | PFLD_GhostOne | 98点关键点 | ONNX | `models/PFLD_GhostOne_112_1_opt_sim.onnx` |
 | FQA | 人脸质量评估 | ONNX | `models/fqa_model.onnx` |
 | FaceLandmarker | 478点关键点 (MediaPipe) | .task | `models/face_landmarker.task` |
 | YOLO26s-cls | 表情识别 (RAF-DB 7类) | ONNX | `models/expression/yolo26s_cls_rafdb.onnx` |
 
 > YOLO 检测器同时支持 `.pt` 和 `.onnx` 格式，ONNX 格式不依赖 PyTorch，适合部署场景。
-| WebFace | 人脸识别 | `models/webface/webface_r50.onnx` |
 
 ## 使用方法
 
@@ -122,8 +134,7 @@ known_faces/
 批量注册：
 
 ```bash
-python main.py register-dir
-python main.py register-dir --dir /path/to/known_faces
+python main.py register --dir known_faces
 ```
 
 注册单张：
@@ -135,13 +146,8 @@ python main.py register --name alice --img face.jpg
 ### 2. 人脸识别 (1:N)
 
 ```bash
-# 识别单张图片
 python main.py identify --img query.jpg --save
-
-# 批量识别目录下所有图片
-python main.py identify-dir --save --output-dir results
-
-# 指定阈值和 top-k
+python main.py identify --dir images/ --save
 python main.py identify --img query.jpg --threshold 0.6 --top-k 3
 ```
 
@@ -162,25 +168,21 @@ python main.py detect --dir images/ --save --output-dir results
 
 ```bash
 python main.py align --img face.jpg --save
-python main.py align --dir images/ --save --output-dir results
+python main.py align --dir images/ --save
 ```
 
 输出：
-- `results/xxx_result.jpg` — 原图标注 bbox + 5 彩色关键点
+- `results/xxx_result.jpg` — 原图标注 bbox + 完整关键点（98/478 小绿点）+ 5 关键点（大彩色圆）
 - `results/aligned/xxx_result_face0.jpg` — 对齐后的 112x112 人脸
 
 ### 6. 人脸质量评估
 
-基于达摩院 FQA 模型，对对齐后的人脸图像打分（0~1，越高越好）。批量模式自动生成 CSV 报告。
+基于 SER-FIQ（识别模型特征稳定性）或达摩院 FQA 模型，对对齐后的人脸打分（0~1）。
 
 ```bash
 python main.py quality --img face.jpg --save
-python main.py quality --dir images/ --save --output-dir results_quality
+python main.py quality --dir images/ --save
 ```
-
-输出：
-- `results/xxx_result.jpg` — 原图标注 bbox + 质量分（颜色渐变：红=差，绿=好）
-- `results_quality/quality_report.csv` — 批量质量评估报告
 
 ### 7. 特征可视化
 
@@ -239,16 +241,25 @@ python main.py evaluate --dir test_faces --threshold 0.5 --output-dir eval_resul
 | EER | FAR = FRR 时的错误率，越低越好 |
 | TAR@FAR=0.001 | FAR 为千分之一时的通过率 |
 
-### 9. 人脸属性分析
+### 9. 人脸属性分析（表情识别 / 微笑检测）
 
 ```bash
 python main.py analyze --img face.jpg --save
 python main.py analyze --dir images/ --save
 ```
 
-> 注：属性分析需要实现 `FaceAnalyzer` 子类并在 `config.yaml` 中配置 `analyzer`。
+支持 7 类表情（RAF-DB）和微笑检测模式，通过 config.yaml 中 `smile_mode` 切换。
 
-### 10. 数据库管理
+### 10. 视频人脸识别
+
+```bash
+python main.py video --input video.mp4
+python main.py video --input video.mp4 --tracker byte --threshold 0.5
+```
+
+输出标注视频（身份 + 表情 + 跟踪 ID）和 `track_log.csv` 跟踪日志。
+
+### 11. 数据库管理
 
 ```bash
 # 列出已注册身份
@@ -266,43 +277,55 @@ python main.py remove --name alice
 detector:
   class: "module.face_detection.yolo_detector.YOLOFaceDetector"
   params:
-    model_path: "models/yolo26m_wider_face/weights/best.pt"
+    model_path: "models/yolo26m_wider_face/weights/yolo26m_facedetect_widerface.onnx"
     conf_threshold: 0.5
 
 aligner:
-  class: "module.face_alignment.pfld_aligner.PFLDAligner"
+  class: "module.face_alignment.pfld_aligner.PFLDAligner"  # 或 mediapipe_aligner.MediaPipeAligner
   params:
     model_path: "models/PFLD_GhostOne_112_1_opt_sim.onnx"
 
 recognizer:
-  class: "module.face_recognition.sface_recognizer.SFaceRecognizer"
+  class: "module.face_recognition.arcface_recognizer.ArcFaceRecognizer"
   params:
-    model_path: "models/sface/face_recognition_sface_2021dec.onnx"
+    model_path: "models/arcface/glint360k_r50.onnx"
 
 database:
   class: "module.face_database.numpy_db.NumpyFaceDatabase"
   params:
-    dup_threshold: 0.9   # 注册去重阈值，同身份下相似度超过此值视为重复
+    dup_threshold: 0.9
   db_path: "face_db.npz"
 
-analyzer: null
-
 quality_assessor:
-  class: "module.face_quality.fqa_assessor.FQAAssessor"
+  class: "module.face_quality.serfiq_assessor.SERFIQAssessor"
   params:
-    model_path: "models/fqa_model.onnx"
+    model_path: "models/arcface/glint360k_r50.onnx"
+
+analyzer:
+  class: "module.face_analysis.expression_analyzer.ExpressionAnalyzer"
+  params:
+    model_path: "models/expression/yolo26s_cls_rafdb.onnx"
+    class_names: "rafdb_7"
+    smile_mode: false
+
+tracker:
+  type: "sort"  # iou / sort / byte
+  params:
+    iou_threshold: 0.3
+    recognize_interval_sec: 1.0
 ```
 
 切换算法只需修改 `class` 和 `params`，无需改代码。
 
 ## 可选检测器/识别器组合
 
-| 检测器 | 识别器 | 校正器 | 说明 |
+| 检测器 | 校正器 | 识别器 | 说明 |
 |--------|--------|--------|------|
-| YOLO (.pt) + PFLD | SFace | PFLDAligner | 默认配置，精度高 |
-| YOLO (.onnx) + PFLD | SFace | PFLDAligner | 不依赖 PyTorch，适合部署 |
-| YuNet | SFace | SFace alignCrop | 轻量级，纯 OpenCV |
-| OpenCV Haar | Histogram | SimpleAligner | 零依赖演示 |
+| YOLO (.onnx) | PFLDAligner (98点) | ArcFace (512维) | 默认配置，精度高 |
+| YOLO (.onnx) | MediaPipeAligner (478点) | ArcFace (512维) | 关键点最精细 |
+| YOLO (.pt) | PFLDAligner | ArcFace | 需要 PyTorch |
+| YuNet | SFace alignCrop | SFace (128维) | 轻量级，纯 OpenCV |
+| OpenCV Haar | SimpleAligner | Histogram | 零依赖演示 |
 
 ## 流水线架构
 
@@ -316,7 +339,7 @@ quality_assessor:
        │ faces: [{bbox, confidence, landmarks}, ...]
        ▼
 ┌─────────────┐
-│  人脸校正    │  PFLDAligner (98点) / SimpleAligner (5点) / SFace alignCrop
+│  人脸校正    │  PFLDAligner (98点) / MediaPipeAligner (478点) / SimpleAligner
 └──────┬──────┘
        │ aligned_face: 112x112 BGR, landmarks_98
        ├──────────────────────────────────┐
@@ -388,7 +411,7 @@ python main.py headpose --dir test_faces --save
 
 - [ ] 活体检测（Anti-Spoofing）— 防照片/视频/3D 面具攻击
 - [ ] 视线估计（Gaze Estimation）— 眼球注视方向预测
-- [ ] 人脸追踪（Face Tracking）— 视频流多目标人脸跟踪（DeepSORT / ByteTrack）
+- [x] 人脸追踪（Face Tracking）— IoU / SORT / ByteTrack 三种跟踪算法，视频模式
 - [x] 人脸质量评估（Face Quality Assessment）— 达摩院 FQA 模型，0~1 质量打分 + CSV 报告
 - [ ] 口罩检测与遮挡人脸识别 — 戴口罩/墨镜场景下的检测与识别
 - [x] 人脸属性分析 — 表情识别（RAF-DB 7类）+ 微笑检测，基于 YOLO 分类模型
@@ -408,7 +431,12 @@ python main.py headpose --dir test_faces --save
 | 关键点校正 | PFLD_GhostOne (98点) | [PFLD_GhostOne](https://github.com/AnthonyF333/PFLD_GhostOne) |
 | 关键点校正 | MediaPipe FaceLandmarker (478点) | [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) |
 | 人脸识别 | SFace | [OpenCV Zoo - SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) |
+| 人脸识别 | ArcFace (Glint360K/WebFace) | [InsightFace](https://github.com/deepinsight/insightface) |
+| 质量评估 | SER-FIQ | [FaceImageQuality](https://github.com/pterhoer/FaceImageQuality) |
 | 人脸质量评估 | FQA | [ModelScope - FQA](https://www.modelscope.cn/models/iic/cv_manual_face-quality-assessment_fqa) |
+| 表情识别 | YOLO26s-cls (RAF-DB) | [Ultralytics](https://github.com/ultralytics/ultralytics) |
+| 人脸跟踪 | SORT | [sort](https://github.com/abewley/sort) |
+| 人脸跟踪 | ByteTrack | [ByteTrack](https://github.com/ifzhang/ByteTrack) |
 | 人脸检测数据集 | WiderFace | [WiderFace](http://shuoyang1213.me/WIDERFACE/) |
 | 关键点数据集 | WFLW (98点) | [WFLW](https://wywu.github.io/projects/LAB/WFLW.html) |
 
