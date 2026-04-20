@@ -4,6 +4,8 @@
 
 ## Recent Updates
 
+- **2026.04.20** — 新增 Web 服务（Flask API + 前端界面），支持浏览器中进行人脸注册/检测/识别/微笑检测
+- **2026.04.20** — 视频跟踪增加 EMA 表情平滑，减少逐帧表情抖动
 - **2026.03.26** — 新增 MediaPipe 478 点关键点校正（MediaPipeAligner），align 命令支持绘制完整关键点
 - **2026.03.26** — 新增头部姿态估计（PFLD 98 点 + solvePnP），`headpose` 命令输出 Yaw/Pitch/Roll + 3D 坐标轴
 - **2026.03.26** — 新增表情识别 / 微笑检测（ExpressionAnalyzer），支持 7 类表情和 smile_mode 切换
@@ -30,6 +32,7 @@
 - **表情识别 / 微笑检测**：基于 YOLO 分类模型，支持 7 类表情和微笑二分类，可配置切换
 - **头部姿态估计**：基于 PFLD 98 点关键点 + solvePnP，输出 Yaw/Pitch/Roll 角度和 3D 坐标轴可视化
 - **视频人脸识别**：检测 + 跟踪（IoU/SORT/ByteTrack）+ 定期识别 + 实时表情标注
+- **Web 服务**：Flask API + 前端界面，支持浏览器中完成人脸注册/检测/识别/微笑检测
 
 ## 项目结构
 
@@ -42,6 +45,9 @@ face_id_attr/
 ├── factory.py               # 根据 config.yaml 动态构建 pipeline
 ├── pipeline.py              # FaceRecogPipeline 流水线核心
 ├── config.yaml              # 模块配置文件
+├── web_server.py            # Flask Web 服务入口
+├── web/
+│   └── index.html           # Web 前端页面
 ├── requirements.txt         # Python 依赖
 ├── module/
 │   ├── face_detection/      # 人脸检测模块
@@ -269,6 +275,31 @@ python main.py list
 python main.py remove --name alice
 ```
 
+### 12. Web 服务
+
+提供 Flask API 和前端界面，可在浏览器中完成人脸注册、检测、识别和微笑检测。
+
+```bash
+# 启动 Web 服务（默认 http://0.0.0.0:5000）
+python web_server.py
+
+# 指定配置和端口
+python web_server.py --config config.yaml --port 8080
+```
+
+API 接口：
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| POST | `/api/register` | 注册人脸（name + image） |
+| POST | `/api/identify` | 人脸识别（image + threshold） |
+| POST | `/api/detect` | 人脸检测（image） |
+| POST | `/api/analyze` | 微笑/表情检测（image） |
+| GET | `/api/identities` | 列出已注册身份 |
+| DELETE | `/api/identity/<name>` | 删除指定身份 |
+
+前端页面访问 `http://localhost:5000`，支持拖拽上传图片和结果可视化。
+
 ## 配置说明
 
 通过 `config.yaml` 配置各模块，格式为：
@@ -420,6 +451,7 @@ python main.py headpose --dir test_faces --save
 - [ ] 视频流实时推理 — RTSP / USB 摄像头实时人脸识别
 - [ ] FAISS / Milvus 向量数据库 — 大规模人脸库高效检索
 - [ ] REST API 服务 — FastAPI 封装，支持 HTTP 接口调用
+- [x] Web 服务 — Flask API + 前端界面，浏览器中完成注册/检测/识别/微笑检测
 - [ ] 模型量化与边缘部署 — INT8 量化、TensorRT 加速、ONNX Runtime 优化
 
 ## References
