@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人脸识别系统</title>
+<style>
+  :root {
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text-secondary: #64748b;
+    --radius: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  .header {
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: white; padding: 20px 0; text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  .header h1 { font-size: 1.6rem; font-weight: 600; }
+  .header p { opacity: 0.85; font-size: 0.9rem; margin-top: 4px; }
+
+  /* 三栏布局 */
+  .container {
+    max-width: 1400px; margin: 24px auto; padding: 0 16px;
+    display: grid; grid-template-columns: 200px 1fr 280px; gap: 20px;
+    align-items: start;
+  }
+
+  /* 左栏: 功能按钮 */
+  .left-col { position: sticky; top: 24px; }
+  .func-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .func-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 12px 16px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--card); cursor: pointer;
+    font-size: 0.88rem; font-weight: 500; color: var(--text);
+    transition: all 0.2s; text-align: left;
+  }
+  .func-btn:hover { border-color: var(--primary); background: #f0f0ff; }
+  .func-btn.active {
+    background: var(--primary); color: white; border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(79,70,229,0.3);
+  }
+  .func-btn .emoji { font-size: 1.2rem; width: 24px; text-align: center; }
+
+  /* 中栏: 操作区 */
+  .center-col { min-width: 0; }
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 24px;
+    border: 1px solid var(--border);
+  }
+  .card + .card { margin-top: 20px; }
+  .card-title {
+    font-size: 1.1rem; font-weight: 600; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title .icon { font-size: 1.3rem; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* 表单 */
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block; font-size: 0.85rem; font-weight: 500;
+    color: var(--text-secondary); margin-bottom: 6px;
+  }
+  input[type="text"], input[type="number"], select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 0.9rem; outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus { border-color: var(--primary); }
+
+  /* 上传区 */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    transition: all 0.2s; position: relative; overflow: hidden;
+    background: #fafbfc; min-height: 180px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--primary); background: #f0f0ff;
+  }
+  .upload-zone .emoji-icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .upload-zone p { color: var(--text-secondary); font-size: 0.85rem; }
+  .upload-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+  .upload-zone .preview {
+    max-width: 100%; max-height: 280px; border-radius: 8px; display: none;
+  }
+
+  /* 按钮 */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 10px 20px; border: none; border-radius: 8px;
+    font-size: 0.9rem; font-weight: 500; cursor: pointer;
+    transition: all 0.2s; width: 100%;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-sm { padding: 4px 12px; font-size: 0.75rem; width: auto; border-radius: 6px; }
+
+  /* 结果区 */
+  .result-area { margin-top: 16px; min-height: 40px; }
+  .result-image {
+    width: 100%; border-radius: 8px; margin-top: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .face-list { list-style: none; margin-top: 10px; }
+  .face-item {
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+    font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;
+  }
+  .face-item.matched { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .face-item.unmatched { background: #fef2f2; border: 1px solid #fecaca; }
+  .face-item.detected { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+  .badge-success { background: #dcfce7; color: #166534; }
+  .badge-danger { background: #fee2e2; color: #991b1b; }
+  .badge-info { background: #dbeafe; color: #1e40af; }
+
+  /* 阈值滑块 */
+  .threshold-row { display: flex; align-items: center; gap: 10px; }
+  .threshold-row input[type="range"] { flex: 1; }
+  .threshold-val { font-size: 0.85rem; font-weight: 600; color: var(--primary); min-width: 36px; }
+
+  /* 表情概率条 */
+  .emotion-bars {
+    padding: 8px 14px; margin-bottom: 8px;
+    background: #f8fafc; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .emotion-bar-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 0.78rem;
+  }
+  .emotion-bar-row:last-child { margin-bottom: 0; }
+  .emotion-name { width: 72px; text-align: right; color: var(--text-secondary); flex-shrink: 0; }
+  .emotion-bar-bg { flex: 1; height: 14px; background: #e2e8f0; border-radius: 7px; overflow: hidden; }
+  .emotion-bar-fill { height: 100%; border-radius: 7px; transition: width 0.4s ease; }
+  .emotion-pct { width: 42px; text-align: right; color: var(--text); font-weight: 500; flex-shrink: 0; }
+
+  /* 右栏: 身份列表 */
+  .right-col { position: sticky; top: 24px; }
+  .identity-list { list-style: none; margin-top: 10px; max-height: 70vh; overflow-y: auto; }
+  .identity-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-radius: 8px; margin-bottom: 5px;
+    background: #f8fafc; border: 1px solid var(--border);
+  }
+  .identity-item .name { font-weight: 500; font-size: 0.85rem; }
+  .identity-item .count { color: var(--text-secondary); font-size: 0.75rem; }
+
+  /* Toast */
+  .toast {
+    position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+    border-radius: 8px; color: white; font-size: 0.85rem;
+    z-index: 1000; transform: translateX(120%); transition: transform 0.3s ease;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+
+  @media (max-width: 900px) {
+    .container { grid-template-columns: 1fr; }
+    .left-col, .right-col { position: static; }
+    .func-list { flex-direction: row; flex-wrap: wrap; }
+    .func-btn { flex: 1; min-width: 120px; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🧑‍💻 人脸识别系统</h1>
+  <p>人脸注册 · 人脸检测 · 人脸识别 · 微笑检测</p>
+</div>
+
+<div class="container">
+  <!-- 左栏: 功能按钮 -->
+  <div class="left-col">
+    <ul class="func-list">
+      <li><button class="func-btn active" data-panel="register" onclick="switchPanel('register')">
+        <span class="emoji">📝</span> 人脸注册
+      </button></li>
+      <li><button class="func-btn" data-panel="detect" onclick="switchPanel('detect')">
+        <span class="emoji">📷</span> 人脸检测
+      </button></li>
+      <li><button class="func-btn" data-panel="identify" onclick="switchPanel('identify')">
+        <span class="emoji">🔍</span> 人脸识别
+      </button></li>
+      <li><button class="func-btn" data-panel="analyze" onclick="switchPanel('analyze')">
+        <span class="emoji">😊</span> 微笑检测
+      </button></li>
+    </ul>
+  </div>
+
+  <!-- 中栏: 操作区 -->
+  <div class="center-col">
+    <!-- 注册面板 -->
+    <div class="panel active" id="panel-register">
+      <div class="card">
+        <div class="card-title"><span class="icon">📝</span> 人脸注册</div>
+        <div class="form-group">
+          <label for="regName">身份名称</label>
+          <input type="text" id="regName" placeholder="输入姓名，如: 张三">
+        </div>
+        <div class="form-group">
+          <div class="upload-zone" id="regZone">
+            <span class="emoji-icon">📷</span>
+            <p>点击或拖拽上传人脸照片</p>
+            <input type="file" id="regFile" accept="image/*">
+            <img class="preview" id="regPreview" alt="预览">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="regBtn" onclick="doRegister()">注册人脸</button>
+        <div class="result-area" id="regResult"></div>
+      </div>
+    </div>
+
+    <!-- 检测面板 -->
+    <div class="panel" id="panel-detect">
+      <div class="card">
+        <div class="card-title"><span class="icon">📷</span> 人脸检测</div>
+        <div class="form-group">
+          <div class="upload-zone" id="detectZone">
+            <span class="emoji-icon">🖼️</span>
+            <p>上传图片进行人脸检测</p>
+            <input type="file" id="detectFile" accept="image/*">
+            <img class="preview" id="detectPreview" alt="预览">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="detectBtn" onclick="doDetect()">开始检测</button>
+        <div class="result-area" id="detectResult"></div>
+      </div>
+    </div>
+
+    <!-- 识别面板 -->
+    <div class="panel" id="panel-identify">
+      <div class="card">
+        <div class="card-title"><span class="icon">🔍</span> 人脸识别</div>
+        <div class="form-group">
+          <div class="upload-zone" id="identifyZone">
+            <span class="emoji-icon">🖼️</span>
+            <p>上传图片进行人脸识别</p>
+            <input type="file" id="identifyFile" accept="image/*">
+            <img class="preview" id="identifyPreview" alt="预览">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>识别阈值</label>
+          <div class="threshold-row">
+            <input type="range" id="threshold" min="0.1" max="0.95" step="0.05" value="0.6">
+            <span class="threshold-val" id="thresholdVal">0.60</span>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="identifyBtn" onclick="doIdentify()">开始识别</button>
+        <div class="result-area" id="identifyResult"></div>
+      </div>
+    </div>
+
+    <!-- 微笑检测面板 -->
+    <div class="panel" id="panel-analyze">
+      <div class="card">
+        <div class="card-title"><span class="icon">😊</span> 微笑检测</div>
+        <div class="form-group">
+          <div class="upload-zone" id="analyzeZone">
+            <span class="emoji-icon">😊</span>
+            <p>上传图片进行微笑检测</p>
+            <input type="file" id="analyzeFile" accept="image/*">
+            <img class="preview" id="analyzePreview" alt="预览">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="analyzeBtn" onclick="doAnalyze()">开始检测</button>
+        <div class="result-area" id="analyzeResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右栏: 已注册身份 -->
+  <div class="right-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">👥</span> 已注册身份</div>
+      <button class="btn btn-primary" style="width:auto;padding:6px 14px;margin-bottom:10px;font-size:0.8rem;" onclick="loadIdentities()">
+        刷新列表
+      </button>
+      <ul class="identity-list" id="identityList">
+        <li style="color:var(--text-secondary);font-size:0.85rem;padding:10px;">加载中...</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "";
+
+// ---- Toast ----
+function showToast(msg, type = "success") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast " + type + " show";
+  setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+// ---- Panel switching (left buttons) ----
+function switchPanel(name) {
+  document.querySelectorAll(".func-btn").forEach(b => b.classList.toggle("active", b.dataset.panel === name));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+}
+
+// ---- Upload preview ----
+function setupUpload(zoneId, fileId, previewId) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(fileId);
+  const preview = document.getElementById(previewId);
+  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault(); zone.classList.remove("dragover");
+    if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; showPreview(); }
+  });
+  input.addEventListener("change", showPreview);
+  function showPreview() {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.src = e.target.result;
+      preview.style.display = "block";
+      const icon = zone.querySelector(".emoji-icon");
+      const p = zone.querySelector("p");
+      if (icon) icon.style.display = "none";
+      if (p) p.style.display = "none";
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+setupUpload("regZone", "regFile", "regPreview");
+setupUpload("detectZone", "detectFile", "detectPreview");
+setupUpload("identifyZone", "identifyFile", "identifyPreview");
+setupUpload("analyzeZone", "analyzeFile", "analyzePreview");
+
+// ---- Threshold slider ----
+document.getElementById("threshold").addEventListener("input", function() {
+  document.getElementById("thresholdVal").textContent = parseFloat(this.value).toFixed(2);
+});
+
+// ---- Loading helper ----
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  if (loading) { btn.dataset.origText = btn.textContent; btn.textContent = "处理中..."; }
+  else { btn.textContent = btn.dataset.origText || btn.textContent; }
+}
+
+// ---- Register ----
+async function doRegister() {
+  const name = document.getElementById("regName").value.trim();
+  const file = document.getElementById("regFile").files[0];
+  if (!name) { showToast("请输入身份名称", "error"); return; }
+  if (!file) { showToast("请上传人脸照片", "error"); return; }
+  setLoading("regBtn", true);
+  const fd = new FormData(); fd.append("name", name); fd.append("image", file);
+  try {
+    const res = await fetch(API + "/api/register", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    let html = `<p style="color:var(--success);font-weight:500;margin-top:10px;">
+      ✅ 成功注册 ${data.registered} 张人脸，身份: ${data.name}</p>`;
+    if (data.result_image) html += `<img class="result-image" src="${data.result_image}" alt="注册结果">`;
+    document.getElementById("regResult").innerHTML = html;
+    showToast(`注册成功: ${data.name} (${data.registered} 张人脸)`);
+    loadIdentities();
+  } catch (e) {
+    showToast("注册失败: " + e.message, "error");
+    document.getElementById("regResult").innerHTML = `<p style="color:var(--danger);margin-top:10px;">❌ ${e.message}</p>`;
+  } finally { setLoading("regBtn", false); }
+}
+
+// ---- Detect ----
+async function doDetect() {
+  const file = document.getElementById("detectFile").files[0];
+  if (!file) { showToast("请上传图片", "error"); return; }
+  setLoading("detectBtn", true);
+  const fd = new FormData(); fd.append("image", file);
+  try {
+    const res = await fetch(API + "/api/detect", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    let html = "";
+    if (data.result_image) html += `<img class="result-image" src="${data.result_image}" alt="检测结果">`;
+    html += `<ul class="face-list">`;
+    if (data.faces.length === 0) html += `<li class="face-item detected">未检测到人脸</li>`;
+    data.faces.forEach((f, i) => {
+      html += `<li class="face-item detected"><span>人脸 #${i+1} &nbsp; 置信度: ${f.confidence}</span><span class="badge badge-info">已检测</span></li>`;
+    });
+    html += `</ul>`;
+    document.getElementById("detectResult").innerHTML = html;
+    showToast(`检测到 ${data.faces.length} 张人脸`);
+  } catch (e) { showToast("检测失败: " + e.message, "error"); }
+  finally { setLoading("detectBtn", false); }
+}
+
+// ---- Identify ----
+async function doIdentify() {
+  const file = document.getElementById("identifyFile").files[0];
+  if (!file) { showToast("请上传图片", "error"); return; }
+  setLoading("identifyBtn", true);
+  const fd = new FormData(); fd.append("image", file);
+  fd.append("threshold", document.getElementById("threshold").value);
+  try {
+    const res = await fetch(API + "/api/identify", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    let html = "";
+    if (data.result_image) html += `<img class="result-image" src="${data.result_image}" alt="识别结果">`;
+    html += `<ul class="face-list">`;
+    if (data.faces.length === 0) html += `<li class="face-item detected">未检测到人脸</li>`;
+    data.faces.forEach((f, i) => {
+      if (f.matched) {
+        html += `<li class="face-item matched"><span>人脸 #${i+1} &nbsp; <strong>${f.identity}</strong> &nbsp; 相似度: ${f.similarity}</span><span class="badge badge-success">已识别</span></li>`;
+      } else {
+        html += `<li class="face-item unmatched"><span>人脸 #${i+1} &nbsp; 未识别 &nbsp; 最高相似度: ${f.similarity}</span><span class="badge badge-danger">未匹配</span></li>`;
+      }
+      if (f.top_k && f.top_k.length > 1) {
+        html += `<li style="padding:4px 20px;font-size:0.8rem;color:var(--text-secondary);">`;
+        f.top_k.forEach(([n, s]) => { html += `${n}: ${s} &nbsp; `; });
+        html += `</li>`;
+      }
+    });
+    html += `</ul>`;
+    document.getElementById("identifyResult").innerHTML = html;
+    const matched = data.faces.filter(f => f.matched).length;
+    showToast(`识别完成: ${matched}/${data.faces.length} 张人脸已匹配`);
+  } catch (e) { showToast("识别失败: " + e.message, "error"); }
+  finally { setLoading("identifyBtn", false); }
+}
+
+// ---- Analyze (smile detection) ----
+async function doAnalyze() {
+  const file = document.getElementById("analyzeFile").files[0];
+  if (!file) { showToast("请上传图片", "error"); return; }
+  setLoading("analyzeBtn", true);
+  const fd = new FormData(); fd.append("image", file);
+  try {
+    const res = await fetch(API + "/api/analyze", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    let html = "";
+    if (data.result_image) html += `<img class="result-image" src="${data.result_image}" alt="分析结果">`;
+    html += `<ul class="face-list">`;
+    if (data.faces.length === 0) html += `<li class="face-item detected">未检测到人脸</li>`;
+    data.faces.forEach((f, i) => {
+      const isSmile = f.dominant_emotion === "Smile" || f.dominant_emotion === "Happiness";
+      const cls = isSmile ? "matched" : "unmatched";
+      const emoji = isSmile ? "😊" : "😐";
+      const badgeCls = isSmile ? "badge-success" : "badge-danger";
+      const label = isSmile ? "微笑" : "未微笑";
+      html += `<li class="face-item ${cls}"><span>${emoji} 人脸 #${i+1} &nbsp; <strong>${f.dominant_emotion}</strong> &nbsp; 置信度: ${f.emotion_confidence}</span><span class="badge ${badgeCls}">${label}</span></li>`;
+      const emotions = f.detail || f.emotion;
+      if (emotions && Object.keys(emotions).length > 1) {
+        html += `<li class="emotion-bars">`;
+        Object.entries(emotions).sort((a,b) => b[1]-a[1]).forEach(([name, prob]) => {
+          const pct = (prob*100).toFixed(1);
+          const barColor = name === "Happiness" || name === "Smile" ? "#16a34a" : "#94a3b8";
+          html += `<div class="emotion-bar-row"><span class="emotion-name">${name}</span><div class="emotion-bar-bg"><div class="emotion-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><span class="emotion-pct">${pct}%</span></div>`;
+        });
+        html += `</li>`;
+      }
+    });
+    html += `</ul>`;
+    document.getElementById("analyzeResult").innerHTML = html;
+    const smiles = data.faces.filter(f => f.dominant_emotion === "Smile" || f.dominant_emotion === "Happiness").length;
+    showToast(`检测完成: ${smiles}/${data.faces.length} 张人脸在微笑`);
+  } catch (e) { showToast("分析失败: " + e.message, "error"); }
+  finally { setLoading("analyzeBtn", false); }
+}
+
+// ---- Identities ----
+async function loadIdentities() {
+  try {
+    const res = await fetch(API + "/api/identities");
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const list = document.getElementById("identityList");
+    if (data.identities.length === 0) {
+      list.innerHTML = `<li style="color:var(--text-secondary);font-size:0.85rem;padding:10px;">暂无注册身份</li>`;
+      return;
+    }
+    list.innerHTML = data.identities.map(id => `
+      <li class="identity-item">
+        <div><span class="name">${id.name}</span><br><span class="count">${id.count} 条特征</span></div>
+        <button class="btn btn-danger btn-sm" onclick="deleteIdentity('${id.name}')">删除</button>
+      </li>`).join("");
+  } catch (e) {
+    document.getElementById("identityList").innerHTML =
+      `<li style="color:var(--danger);font-size:0.85rem;padding:10px;">加载失败: ${e.message}</li>`;
+  }
+}
+
+async function deleteIdentity(name) {
+  if (!confirm(`确定删除身份 "${name}" 吗？`)) return;
+  try {
+    const res = await fetch(API + `/api/identity/${encodeURIComponent(name)}`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`已删除: ${name}`);
+    loadIdentities();
+  } catch (e) { showToast("删除失败: " + e.message, "error"); }
+}
+
+loadIdentities();
+</script>
+</body>
+</html>

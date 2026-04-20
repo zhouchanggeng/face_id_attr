@@ -11,6 +11,10 @@ class Track:
     """单个人脸跟踪轨迹。"""
     _next_id = 0
 
+    # 表情平滑参数
+    EMOTION_LABELS = ["Surprise", "Fear", "Disgust", "Happiness", "Sadness", "Anger", "Neutral"]
+    EMOTION_SMOOTH_ALPHA = 0.3  # EMA 平滑系数，越小越平滑
+
     def __init__(self, bbox, confidence, track_id=None):
         if track_id is None:
             self.track_id = Track._next_id
@@ -26,6 +30,35 @@ class Track:
         self.missed = 0              # 连续未匹配帧数
         self.recognized = False      # 是否已识别过
         self.feature = None          # 最近一次特征
+        # 表情平滑相关
+        self._emotion_probs = None   # 平滑后的表情概率 (np.ndarray)
+        self._emotion_labels = []    # 当前使用的表情标签
+        self._emotion = ""           # 当前显示的表情
+
+    def update_emotion(self, emotion_dict: dict):
+        """使用 EMA 平滑更新表情概率，返回平滑后的主要表情。
+        
+        Args:
+            emotion_dict: 当前帧的表情概率，如 {"Smile": 0.8, "No_Smile": 0.2}
+                          或 {"Surprise": 0.1, "Fear": 0.05, ...}
+        Returns:
+            平滑后的主要表情名称
+        """
+        labels = sorted(emotion_dict.keys())
+        current_probs = np.array([emotion_dict[e] for e in labels])
+
+        if self._emotion_probs is None or self._emotion_labels != labels:
+            self._emotion_labels = labels
+            self._emotion_probs = current_probs
+        else:
+            self._emotion_probs = (
+                self.EMOTION_SMOOTH_ALPHA * current_probs +
+                (1 - self.EMOTION_SMOOTH_ALPHA) * self._emotion_probs
+            )
+
+        dominant_idx = int(np.argmax(self._emotion_probs))
+        self._emotion = self._emotion_labels[dominant_idx]
+        return self._emotion
 
     def update(self, bbox, confidence):
         self.bbox = bbox

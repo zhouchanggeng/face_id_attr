@@ -449,6 +449,7 @@ python main.py headpose --dir test_faces --save
 - [SeetaFaceTutorial](https://github.com/seetafaceengine/SeetaFaceTutorial) — 中科视拓开源人脸识别引擎说明文档
 - [FaceMind](https://github.com/Justin-ljw/FaceMind) - 基于OpenCV + RetinaFace + ArcFace的深度学习实时人脸识别系统
 - [arcface-pytorch](https://github.com/bubbliiiing/arcface-pytorch) - Arcface：人脸识别模型在Pytorch当中的实现
+- [uniface](https://github.com/yakhyo/uniface) - Unified Face Analysis Pipeline，集成人脸检测、关键点、识别、属性分析的统一框架
 
 ## License
 
